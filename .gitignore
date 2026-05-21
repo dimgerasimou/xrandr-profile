@@ -1,0 +1,7 @@
+# build artifacts
+bin/
+obj/
+
+# editor artifacts
+compile_commands.json
+.cache/
