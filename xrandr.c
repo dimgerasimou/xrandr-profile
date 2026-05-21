@@ -1,3 +1,5 @@
+/* See LICENSE file for copyright and license details. */
+
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>

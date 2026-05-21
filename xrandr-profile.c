@@ -1,3 +1,13 @@
+/* xrandr-profile
+ * Copyright (c) 2026 Dimitris Gerasimou
+ * Licensed under the GNU General Public License v3.
+ *
+ * Simple XRandr profile manager, based on hardware
+ * configuration.
+ *
+ * To understand everything, start reading main().
+ */
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>

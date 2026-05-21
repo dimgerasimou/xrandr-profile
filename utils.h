@@ -1,3 +1,5 @@
+/* See LICENSE file for copyright and license details. */
+
 #ifndef XRANDRSETUP_UTILS_H
 #define XRANDRSETUP_UTILS_H
 
