@@ -5,9 +5,8 @@
 
 #include <string.h>
 
-/* Sets program_name to alloced name ptr. */
+/* Stores name pointer; caller must keep it alive (typically argv[0]). */
 void set_name(const char *name);
-
 
 /* Gets program_name ptr */
 const char *get_name(void);
