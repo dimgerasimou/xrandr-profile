@@ -65,7 +65,6 @@ get_edid(Display *dpy, const RROutput output, Monitor *m)
 		return -1;
 	}
 
-	/* Descriptor blocks: prefer serial (0xFF) over name (0xFC) */
 	for (int i = 0; i < 4; i++) {
 		char *dst = NULL;
 		const unsigned char *d = data + 54 + i * 18;
@@ -273,17 +272,37 @@ xr_apply_profile(const Profile *p)
 	RROutput            primary = None;
 	RRCrtc              used_crtcs[64];
 	int                 nused = 0;
- 
+
+	struct {
+		RROutput       output;
+		XRROutputInfo *info;
+		uint64_t       hash;
+	} cache[64];
+	int ncache = 0;
+
 	root = DefaultRootWindow(dpy);
 	r    = XRRGetScreenResources(dpy, root);
 	if (!r)
 		die("Can't get screen resources");
- 
-	/*
-	 * Step 1: disable all active CRTCs.
-	 * Must happen before resizing the screen, and prevents "CRTC too large"
-	 * errors when the new layout is smaller than the current one.
-	 */
+
+	for (int j = 0; j < r->noutput && ncache < (int)(sizeof(cache)/sizeof(*cache)); j++) {
+		XRROutputInfo *oi = XRRGetOutputInfo(dpy, r, r->outputs[j]);
+		if (!oi)
+			continue;
+		if (oi->connection != RR_Connected) {
+			XRRFreeOutputInfo(oi);
+			continue;
+		}
+
+		Monitor tmp = {0};
+		get_edid(dpy, r->outputs[j], &tmp);
+
+		cache[ncache].output = r->outputs[j];
+		cache[ncache].info   = oi;
+		cache[ncache].hash   = tmp.edid.hash;
+		ncache++;
+	}
+
 	for (int i = 0; i < r->ncrtc; i++) {
 		XRRCrtcInfo *crtc = XRRGetCrtcInfo(dpy, r, r->crtcs[i]);
 		if (!crtc)
@@ -293,43 +312,35 @@ xr_apply_profile(const Profile *p)
 			                 0, 0, None, RR_Rotate_0, NULL, 0);
 		XRRFreeCrtcInfo(crtc);
 	}
- 
-	/*
-	 * Step 2: compute the new screen bounding box.
-	 * Rotation swaps w/h; transform (scale) divides the framebuffer size.
-	 */
+
 	int new_w = 0, new_h = 0;
- 
+
 	for (size_t i = 0; i < p->len; i++) {
 		const Monitor *m = &p->m[i];
- 
+
 		if (!m->enabled)
 			continue;
- 
+
 		int rot  = m->rotation & 0xf;
 		int fb_w = (rot == RR_Rotate_90 || rot == RR_Rotate_270) ? m->h : m->w;
 		int fb_h = (rot == RR_Rotate_90 || rot == RR_Rotate_270) ? m->w : m->h;
- 
+
 		if (m->has_transform
 		        && m->transform[0][0] > 1e-9
 		        && m->transform[1][1] > 1e-9) {
 			fb_w = (int)ceil((double)fb_w / m->transform[0][0]);
 			fb_h = (int)ceil((double)fb_h / m->transform[1][1]);
 		}
- 
+
 		int right  = m->x + fb_w;
 		int bottom = m->y + fb_h;
 		if (right  > new_w) new_w = right;
 		if (bottom > new_h) new_h = bottom;
 	}
- 
+
 	if (new_w < 1) new_w = 1;
 	if (new_h < 1) new_h = 1;
- 
-	/*
-	 * Step 3: resize the screen.
-	 * Derive mm dimensions from current DPI to keep physical size consistent.
-	 */
+
 	Screen *scr   = DefaultScreenOfDisplay(dpy);
 	double  dpi_x = (double)scr->width  / scr->mwidth;
 	double  dpi_y = (double)scr->height / scr->mheight;
@@ -337,83 +348,56 @@ xr_apply_profile(const Profile *p)
 	int     mm_h  = (int)((double)new_h / dpi_y);
 	if (mm_w < 1) mm_w = 1;
 	if (mm_h < 1) mm_h = 1;
- 
+
 	XRRSetScreenSize(dpy, root, new_w, new_h, mm_w, mm_h);
- 
-	/*
-	 * Step 4: configure each monitor in the profile.
-	 */
+
 	for (size_t i = 0; i < p->len; i++) {
 		const Monitor *m = &p->m[i];
- 
-		/* find output by EDID hash */
+
 		RROutput       output = None;
 		XRROutputInfo *info   = NULL;
- 
-		for (int j = 0; j < r->noutput; j++) {
-			XRROutputInfo *oi = XRRGetOutputInfo(dpy, r, r->outputs[j]);
-			if (!oi)
-				continue;
-			if (oi->connection != RR_Connected) {
-				XRRFreeOutputInfo(oi);
-				continue;
-			}
- 
-			Monitor tmp = {0};
-			get_edid(dpy, r->outputs[j], &tmp);
- 
-			if (tmp.edid.hash == m->edid.hash) {
-				output = r->outputs[j];
-				info   = oi;
+
+		for (int j = 0; j < ncache; j++) {
+			if (cache[j].hash == m->edid.hash) {
+				output = cache[j].output;
+				info   = cache[j].info;
 				break;
 			}
- 
-			XRRFreeOutputInfo(oi);
 		}
- 
+
 		if (!info) {
 			warn("No output found for monitor \"%s\" (hash=%" PRIu64 ")",
 			     m->edid.name, m->edid.hash);
 			continue;
 		}
- 
-		if (!m->enabled) {
-			XRRFreeOutputInfo(info);
+
+		if (!m->enabled)
 			continue;
-		}
- 
+
 		RRMode mode_id = find_mode(r, info, m->w, m->h, m->rate);
 		if (mode_id == None) {
 			warn("No mode %ux%u@%.2f for monitor \"%s\"",
 			     m->w, m->h, m->rate, m->edid.name);
-			XRRFreeOutputInfo(info);
 			continue;
 		}
- 
+
 		RRCrtc crtc = find_crtc(info, used_crtcs, nused);
 		if (crtc == None) {
 			warn("No CRTC available for monitor \"%s\"", m->edid.name);
-			XRRFreeOutputInfo(info);
 			continue;
 		}
 		used_crtcs[nused++] = crtc;
- 
+
 		Status st = XRRSetCrtcConfig(dpy, r, crtc, CurrentTime,
 		                             m->x, m->y, mode_id, m->rotation,
 		                             &output, 1);
 		if (st != RRSetConfigSuccess) {
 			warn("XRRSetCrtcConfig failed for monitor \"%s\"", m->edid.name);
-			XRRFreeOutputInfo(info);
 			continue;
 		}
- 
-		/*
-		 * Apply or reset transform.
-		 * Always call XRRSetCrtcTransform so a previously applied transform
-		 * from another profile doesn't persist.
-		 */
+
 		XTransform xf;
- 
+
 		if (m->has_transform) {
 			for (int ri = 0; ri < 3; ri++)
 				for (int ci = 0; ci < 3; ci++)
@@ -425,18 +409,18 @@ xr_apply_profile(const Profile *p)
 				{ 0, 0, XDoubleToFixed(1) },
 			}};
 		}
- 
+
 		XRRSetCrtcTransform(dpy, crtc, &xf, "bilinear", NULL, 0);
- 
+
 		if (m->primary)
 			primary = output;
- 
-		XRRFreeOutputInfo(info);
 	}
- 
-	/* Step 5: set primary output */
+
 	if (primary != None)
 		XRRSetOutputPrimary(dpy, root, primary);
- 
+
+	for (int j = 0; j < ncache; j++)
+		XRRFreeOutputInfo(cache[j].info);
+
 	XRRFreeScreenResources(r);
 }
