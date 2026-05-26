@@ -3,9 +3,10 @@
 
 VERSION  ?= 0.1.0
 CC       ?= cc
-CFLAGS   ?= -Wall -Wextra -Wno-deprecated-declarations -Os
+CFLAGS   ?= -Os
+CFLAGS   += -Wall -Wextra -Wno-deprecated-declarations -std=c11
 CPPFLAGS += -MMD -MP -DVERSION=\"${VERSION}\"
-LDLIBS   ?= -lX11 -lXrandr -lm
+LDLIBS   ?= -lX11 -lXrandr -lXrender -lm
 
 PREFIX    ?= /usr/local
 BINDIR    := bin
@@ -58,6 +59,7 @@ install: $(TARGET)
 
 uninstall:
 	@$(PRINTF) "$(COLOR_CYAN)Uninstalling $(BIN) from:$(COLOR_RESET) %s\n" "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
+	@rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)
 
 -include $(DEPS)
 
