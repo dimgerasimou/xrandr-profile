@@ -36,7 +36,7 @@ typedef struct {
 } Options;
 
 static int
-action_auto(void)
+action_apply(const char *name)
 {
 	ProfileList *pl;
 	Profile     *cur;
@@ -46,22 +46,29 @@ action_auto(void)
 	cur = xr_active_profile();
 
 	for (size_t i = 0; i < pl->len; i++) {
-		if (profile_match(pl->p[i], cur)) {
-			Profile *sel = pl->p[i];
-			
-			for (size_t j = i ; j > 0; j--)
-				pl->p[j] = pl->p[j-1];
+		if (!profile_match(pl->p[i], cur))
+			continue;
+		if (name && strcmp(pl->p[i]->name, name) != 0)
+			continue;
 
-			pl->p[0] = sel;
+		Profile *sel = pl->p[i];
 
-			xr_apply_profile(sel);
+		memmove(&pl->p[1], &pl->p[0], i * sizeof(Profile *));
+		pl->p[0] = sel;
 
-			if (profile_list_write(pl))
-				ret = -1;
-			break;
-		}
+		xr_apply_profile(sel);
+
+		if (profile_list_write(pl))
+			ret = -1;
+		goto out;
 	}
 
+	if (name)
+		warn("no matching profile named \"%s\"", name);
+
+	ret = -1;
+
+out:
 	profile_list_free(pl);
 	profile_free(cur);
 	return ret;
@@ -87,38 +94,6 @@ action_save(Options *opt)
 		ret = -1;
 
 	profile_list_free(pl);
-	return ret;
-}
-
-static int
-action_load(Options *opt)
-{
-	ProfileList *pl;
-	Profile     *cur;
-	int          ret = 0;
-
-	pl  = profile_list_read();
-	cur = xr_active_profile();
-
-	for (size_t i = 0; i < pl->len; i++) {
-		if (profile_match(pl->p[i], cur) && !strcmp(pl->p[i]->name, opt->name)) {
-			Profile *sel = pl->p[i];
-			
-			for (size_t j = i ; j > 0; j--)
-				pl->p[j] = pl->p[j-1];
-
-			pl->p[0] = sel;
-
-			xr_apply_profile(sel);
-
-			if (profile_list_write(pl))
-				ret = -1;
-			break;
-		}
-	}
-
-	profile_list_free(pl);
-	profile_free(cur);
 	return ret;
 }
 
@@ -196,51 +171,86 @@ usage(void)
 	);
 }
 
+static const char *
+match_opt(const char *arg, const char *name)
+{
+	const char *p = arg;
+	size_t n;
+
+	if (*p++ != '-')
+		return NULL;
+	if (*p == '-')
+		p++;
+
+	n = strlen(name);
+	if (strncmp(p, name, n) != 0)
+		return NULL;
+	if (p[n] == '\0')
+		return "";
+	if (p[n] == '=')
+		return p + n + 1;
+	return NULL;
+}
+
 static void
 options_parse(Options *opt, const int argc, const char *argv[])
 {
+	const char *val;
+
 	opt->name = NULL;
 	opt->a = AUTO;
 
 	for (int i = 1; i < argc; i++) {
-		if (!strcmp ("-help", argv[i]) || !strcmp ("--help", argv[i]) || !strcmp ("-h", argv[i])) {
+		if (match_opt(argv[i], "help") || match_opt(argv[i], "h")) {
 			usage();
 			exit(0);
 		}
-		if (!strcmp ("-version", argv[i]) || !strcmp ("--version", argv[i]) || !strcmp ("-v", argv[i])) {
+		if (match_opt(argv[i], "version") || match_opt(argv[i], "v")) {
 			printf("%s-"VERSION"\n", get_name());
 			exit(0);
 		}
-		if (!strcmp ("-save", argv[i]) || !strcmp ("--save", argv[i])) {
-			if (++i >= argc)
-				argerr("%s requires an argument", argv[i-1]);
-			opt->name = argv[i];
+		if ((val = match_opt(argv[i], "save")) != NULL) {
+			if (val[0] == '\0') {
+				if (++i >= argc)
+					argerr("%s requires an argument", argv[i-1]);
+				opt->name = argv[i];
+			} else {
+				opt->name = val;
+			}
 			opt->a = SAVE;
 			break;
 		}
-		if (!strcmp ("-load", argv[i]) || !strcmp ("--load", argv[i])) {
-			if (++i >= argc)
-				argerr("%s requires an argument", argv[i-1]);
-			opt->name = argv[i];
+		if ((val = match_opt(argv[i], "load")) != NULL) {
+			if (val[0] == '\0') {
+				if (++i >= argc)
+					argerr("%s requires an argument", argv[i-1]);
+				opt->name = argv[i];
+			} else {
+				opt->name = val;
+			}
 			opt->a = LOAD;
 			break;
 		}
-		if (!strcmp ("-delete", argv[i]) || !strcmp ("--delete", argv[i])) {
-			if (++i >= argc)
-				argerr("%s requires an argument", argv[i-1]);
-			opt->name = argv[i];
+		if ((val = match_opt(argv[i], "delete")) != NULL) {
+			if (val[0] == '\0') {
+				if (++i >= argc)
+					argerr("%s requires an argument", argv[i-1]);
+				opt->name = argv[i];
+			} else {
+				opt->name = val;
+			}
 			opt->a = DELETE;
 			break;
 		}
-		if (!strcmp ("-list", argv[i]) || !strcmp ("--list", argv[i])) {
+		if (match_opt(argv[i], "list")) {
 			opt->a = LIST;
 			break;
 		}
-		if (!strcmp ("-list-all", argv[i]) || !strcmp ("--list-all", argv[i])) {
+		if (match_opt(argv[i], "list-all")) {
 			opt->a = LIST_ALL;
 			break;
 		}
-		if (!strcmp ("-list-current", argv[i]) || !strcmp ("--list-current", argv[i])) {
+		if (match_opt(argv[i], "list-current")) {
 			opt->a = LIST_CURRENT;
 			break;
 		}
@@ -260,7 +270,7 @@ main (int argc, char *argv[])
 
 	switch (opt.a) {
 	case AUTO:
-		if (action_auto())
+		if (action_apply(NULL))
 			ret = 1;
 		break;
 
@@ -270,7 +280,7 @@ main (int argc, char *argv[])
 		break;
 
 	case LOAD:
-		if (action_load(&opt))
+		if (action_apply(opt.name))
 			ret = 1;
 		break;
 	
