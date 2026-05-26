@@ -69,7 +69,6 @@ argerr(const char *fmt, ...)
 	va_end(ap);
 
 	fprintf (stderr, "\nTry '%s --help' for more information.\n", program_name);
-	fputc('\n', stderr);
 	exit(1);
 }
 
