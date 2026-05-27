@@ -1,4 +1,4 @@
-# xrandr-setup
+# xrandr-profile
 
 A lightweight **XRandr** profile manager. Saves and restores display configurations based on connected hardware, with automatic profile matching via EDID.
 Useful when you frequently switch between setups or power profiles, thus changing the output names and want your layout restored without heavy, complex and
