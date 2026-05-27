@@ -20,17 +20,17 @@ sudo make install
 
 ## Usage
 
-Behavior is configured via flags (see `xrandr-setup --help`).
+Behavior is configured via flags (see `xrandr-profile --help`).
 
 Quick example:
 ```bash
-xrandr-setup --save work        # save current layout as "work"
-xrandr-setup --load work        # restore layout "work" if hardware matches
-xrandr-setup --list             # print saved profiles matching current hardware
-xrandr-setup --list-all         # print all saved profiles
-xrandr-setup --list-current     # print current active layout
-xrandr-setup --delete work      # delete saved profile "work"
-xrandr-setup                    # auto-match and apply last used matching profile
+xrandr-profile --save work        # save current layout as "work"
+xrandr-profile --load work        # restore layout "work" if hardware matches
+xrandr-profile --list             # print saved profiles matching current hardware
+xrandr-profile --list-all         # print all saved profiles
+xrandr-profile --list-current     # print current active layout
+xrandr-profile --delete work      # delete saved profile "work"
+xrandr-profile                    # auto-match and apply last used matching profile
 ```
 
 ## Features
