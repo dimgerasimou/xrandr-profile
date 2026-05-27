@@ -32,7 +32,6 @@ rotation_name(uint8_t rotation)
 	return "invalid rotation";
 }
 
-
 static const char *
 reflection_name (uint8_t rotation)
 {
@@ -166,6 +165,13 @@ parse_double(const char *s, double *out)
 }
 
 static int
+report_malformed_line(const char *key, const char *val)
+{
+	warn("Malformed value for \"%s\": \"%s\"", key, val);
+	return -1;
+}
+
+static int
 parse_monitor_line(const char *line, Monitor *m)
 {
 	line += strlen("monitor ");
@@ -184,8 +190,10 @@ parse_monitor_line(const char *line, Monitor *m)
 			key[ki++] = *line++;
 		key[ki] = '\0';
 
-		if (*line++ != '=')
+		if (*line++ != '=') {
+			warn("Missing '=' after key \"%s\"", key);
 			return -1;
+		}
 
 		char val[256];
 		size_t vi = 0;
@@ -205,54 +213,59 @@ parse_monitor_line(const char *line, Monitor *m)
 
 		if (!strcmp(key, "hash")) {
 			if (parse_u64(val, &m->edid.hash) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "name")) {
-			snprintf(m->edid.name, sizeof(m->edid.name), "%.*s", (int)sizeof(m->edid.name) - 1, val);
+			snprintf(m->edid.name, sizeof(m->edid.name), "%.*s",
+			         (int)sizeof(m->edid.name) - 1, val);
 		} else if (!strcmp(key, "serial")) {
-			snprintf(m->edid.serial, sizeof(m->edid.serial), "%.*s", (int)sizeof(m->edid.serial) - 1, val);
+			snprintf(m->edid.serial, sizeof(m->edid.serial), "%.*s",
+			         (int)sizeof(m->edid.serial) - 1, val);
 		} else if (!strcmp(key, "primary")) {
 			if (parse_u8(val, &m->primary) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "enabled")) {
 			if (parse_u8(val, &m->enabled) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "w")) {
 			if (parse_u16(val, &m->w) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "h")) {
 			if (parse_u16(val, &m->h) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "rate")) {
 			if (parse_double(val, &m->rate) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "x")) {
 			if (parse_i32(val, &m->x) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "y")) {
 			if (parse_i32(val, &m->y) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "pan_x")) {
-			if (parse_i32(val, &m->pan_x) < 0)
-				return -1;
+			if (parse_i32(val, &m->pan_x) < 0) 
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "pan_y")) {
 			if (parse_i32(val, &m->pan_y) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "pan_w")) {
 			if (parse_u16(val, &m->pan_w) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "pan_h")) {
 			if (parse_u16(val, &m->pan_h) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "rotation")) {
 			if (parse_u8(val, &m->rotation) < 0)
-				return -1;
+				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "transform")) {
 			if (sscanf(val, "[[%la,%la,%la],[%la,%la,%la],[%la,%la,%la]]",
-			           &m->transform[0][0], &m->transform[0][1], &m->transform[0][2],
-			           &m->transform[1][0], &m->transform[1][1], &m->transform[1][2],
-			           &m->transform[2][0], &m->transform[2][1], &m->transform[2][2]) != 9)
-				return -1;
+			             &m->transform[0][0], &m->transform[0][1], &m->transform[0][2],
+			             &m->transform[1][0], &m->transform[1][1], &m->transform[1][2],
+			             &m->transform[2][0], &m->transform[2][1], &m->transform[2][2]) != 9)
+				return report_malformed_line(key, val);
 			m->has_transform = 1;
+		} else {
+			warn("Unknown field \"%s\"", key);
+			return -1;
 		}
 	}
 
@@ -447,10 +460,8 @@ profile_list_read(void)
 
 			profile_append(cur);
 
-			if (parse_monitor_line(line, &cur->m[cur->len - 1]) < 0) {
-				warn("Malformed monitor line: %s", line);
+			if (parse_monitor_line(line, &cur->m[cur->len - 1]) < 0)
 				cur->len--;
-			}
 		}
 	}
 
