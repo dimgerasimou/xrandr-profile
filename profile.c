@@ -242,7 +242,7 @@ parse_monitor_line(const char *line, Monitor *m)
 			if (parse_i32(val, &m->y) < 0)
 				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "pan_x")) {
-			if (parse_i32(val, &m->pan_x) < 0) 
+			if (parse_i32(val, &m->pan_x) < 0)
 				return report_malformed_line(key, val);
 		} else if (!strcmp(key, "pan_y")) {
 			if (parse_i32(val, &m->pan_y) < 0)
