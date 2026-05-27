@@ -1,7 +1,7 @@
 # xrandr-profile
 # See LICENSE file for copyright and license details.
 
-VERSION  ?= 0.1.0
+VERSION  ?= 0.2.0
 CC       ?= cc
 CFLAGS   ?= -Os
 CFLAGS   += -Wall -Wextra -Wno-deprecated-declarations -std=c11
