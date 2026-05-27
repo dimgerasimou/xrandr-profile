@@ -1,42 +1,49 @@
 /* See LICENSE file for copyright and license details. */
 
+#define _POSIX_C_SOURCE 200809L
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <inttypes.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
+#include <X11/extensions/randr.h>
 
 #include "profile.h"
 #include "utils.h"
 
-static const char *direction[5] = { "normal", "left", "inverted", "right", "\n" };
-
 static const char *
 rotation_name(uint8_t rotation)
 {
-	if ((rotation & 0xf) == 0)
+	switch (rotation & (RR_Rotate_0 | RR_Rotate_90 | RR_Rotate_180 | RR_Rotate_270)) {
+	case RR_Rotate_0:
 		return "normal";
-	for (int i = 0; i < 4; i++)
-		if (rotation & (1 << i))
-			return direction[i];
+	case RR_Rotate_90:
+		return "left";
+	case RR_Rotate_180:
+		return "inverted";
+	case RR_Rotate_270:
+		return "right";
+	}
 	return "invalid rotation";
 }
+
 
 static const char *
 reflection_name (uint8_t rotation)
 {
-	rotation &= (16|32);
-	switch (rotation) {
+	switch (rotation & (RR_Reflect_X | RR_Reflect_Y)) {
 	case 0:
 		return "none";
-	case 16:
+	case RR_Reflect_X:
 		return "X axis";
-	case 32:
+	case RR_Reflect_Y:
 		return "Y axis";
-	case 16|32:
+	case RR_Reflect_X | RR_Reflect_Y:
 		return "X and Y axis";
 	}
 	return "invalid reflection";
@@ -89,6 +96,76 @@ config_path(char *buf, const size_t bufsz)
 }
 
 static int
+parse_u8(const char *s, uint8_t *out)
+{
+	char *ep;
+	unsigned long v;
+
+	errno = 0;
+	v = strtoul(s, &ep, 10);
+	if (errno || ep == s || *ep || v > UINT8_MAX)
+		return -1;
+	*out = (uint8_t)v;
+	return 0;
+}
+
+static int
+parse_u16(const char *s, uint16_t *out)
+{
+	char *ep;
+	unsigned long v;
+
+	errno = 0;
+	v = strtoul(s, &ep, 10);
+	if (errno || ep == s || *ep || v > UINT16_MAX)
+		return -1;
+	*out = (uint16_t)v;
+	return 0;
+}
+
+static int
+parse_u64(const char *s, uint64_t *out)
+{
+	char *ep;
+	unsigned long long v;
+
+	errno = 0;
+	v = strtoull(s, &ep, 10);
+	if (errno || ep == s || *ep)
+		return -1;
+	*out = (uint64_t)v;
+	return 0;
+}
+
+static int
+parse_i32(const char *s, int32_t *out)
+{
+	char *ep;
+	long v;
+
+	errno = 0;
+	v = strtol(s, &ep, 10);
+	if (errno || ep == s || *ep || v < INT32_MIN || v > INT32_MAX)
+		return -1;
+	*out = (int32_t)v;
+	return 0;
+}
+
+static int
+parse_double(const char *s, double *out)
+{
+	char *ep;
+	double v;
+
+	errno = 0;
+	v = strtod(s, &ep);
+	if (errno || ep == s || *ep)
+		return -1;
+	*out = v;
+	return 0;
+}
+
+static int
 parse_monitor_line(const char *line, Monitor *m)
 {
 	line += strlen("monitor ");
@@ -100,7 +177,6 @@ parse_monitor_line(const char *line, Monitor *m)
 		if (!*line)
 			break;
 
-		/* read key */
 		char key[32];
 		size_t ki = 0;
 
@@ -109,9 +185,8 @@ parse_monitor_line(const char *line, Monitor *m)
 		key[ki] = '\0';
 
 		if (*line++ != '=')
-			return -1;  /* skip '=' */
+			return -1;
 
-		/* read value: quoted or bare */
 		char val[256];
 		size_t vi = 0;
 
@@ -128,44 +203,55 @@ parse_monitor_line(const char *line, Monitor *m)
 		}
 		val[vi] = '\0';
 
-		/* dispatch */
-		char *ep;
-
 		if (!strcmp(key, "hash")) {
-			m->edid.hash = (uint64_t) strtoull(val, &ep, 10);
+			if (parse_u64(val, &m->edid.hash) < 0)
+				return -1;
 		} else if (!strcmp(key, "name")) {
-			strncpy(m->edid.name,   val, sizeof(m->edid.name)   - 1);
+			snprintf(m->edid.name, sizeof(m->edid.name), "%.*s", (int)sizeof(m->edid.name) - 1, val);
 		} else if (!strcmp(key, "serial")) {
-			strncpy(m->edid.serial, val, sizeof(m->edid.serial) - 1);
+			snprintf(m->edid.serial, sizeof(m->edid.serial), "%.*s", (int)sizeof(m->edid.serial) - 1, val);
 		} else if (!strcmp(key, "primary")) {
-			m->primary = (uint8_t) strtol(val, &ep, 10);
+			if (parse_u8(val, &m->primary) < 0)
+				return -1;
 		} else if (!strcmp(key, "enabled")) {
-			m->enabled = (uint8_t) strtol(val, &ep, 10);
+			if (parse_u8(val, &m->enabled) < 0)
+				return -1;
 		} else if (!strcmp(key, "w")) {
-			m->w = (uint16_t) strtol(val, &ep, 10);
+			if (parse_u16(val, &m->w) < 0)
+				return -1;
 		} else if (!strcmp(key, "h")) {
-			m->h = (uint16_t) strtol(val, &ep, 10);
+			if (parse_u16(val, &m->h) < 0)
+				return -1;
 		} else if (!strcmp(key, "rate")) {
-			m->rate = strtod(val, &ep);
+			if (parse_double(val, &m->rate) < 0)
+				return -1;
 		} else if (!strcmp(key, "x")) {
-			m->x = (int32_t)  strtol(val, &ep, 10);
+			if (parse_i32(val, &m->x) < 0)
+				return -1;
 		} else if (!strcmp(key, "y")) {
-			m->y = (int32_t)  strtol(val, &ep, 10);
+			if (parse_i32(val, &m->y) < 0)
+				return -1;
 		} else if (!strcmp(key, "pan_x")) {
-			m->pan_x = (int32_t)  strtol(val, &ep, 10);
+			if (parse_i32(val, &m->pan_x) < 0)
+				return -1;
 		} else if (!strcmp(key, "pan_y")) {
-			m->pan_y = (int32_t)  strtol(val, &ep, 10);
+			if (parse_i32(val, &m->pan_y) < 0)
+				return -1;
 		} else if (!strcmp(key, "pan_w")) {
-			m->pan_w = (uint16_t) strtol(val, &ep, 10);
+			if (parse_u16(val, &m->pan_w) < 0)
+				return -1;
 		} else if (!strcmp(key, "pan_h")) {
-			m->pan_h = (uint16_t) strtol(val, &ep, 10);
+			if (parse_u16(val, &m->pan_h) < 0)
+				return -1;
 		} else if (!strcmp(key, "rotation")) {
-			m->rotation = (uint8_t)  strtol(val, &ep, 10);
+			if (parse_u8(val, &m->rotation) < 0)
+				return -1;
 		} else if (!strcmp(key, "transform")) {
-			sscanf(val, "[[%la,%la,%la],[%la,%la,%la],[%la,%la,%la]]",
-			             &m->transform[0][0], &m->transform[0][1], &m->transform[0][2],
-			             &m->transform[1][0], &m->transform[1][1], &m->transform[1][2],
-			             &m->transform[2][0], &m->transform[2][1], &m->transform[2][2]);
+			if (sscanf(val, "[[%la,%la,%la],[%la,%la,%la],[%la,%la,%la]]",
+			           &m->transform[0][0], &m->transform[0][1], &m->transform[0][2],
+			           &m->transform[1][0], &m->transform[1][1], &m->transform[1][2],
+			           &m->transform[2][0], &m->transform[2][1], &m->transform[2][2]) != 9)
+				return -1;
 			m->has_transform = 1;
 		}
 	}
@@ -289,11 +375,9 @@ profile_list_prepend(ProfileList *pl, Profile *p)
 		pl->cap = newcap;
 	}
 
-	pl->len++;
-	for (size_t i = pl->len - 1 ; i > 0; i--)
-		pl->p[i] = pl->p[i-1];
-
+	memmove(pl->p + 1, pl->p, pl->len * sizeof(Profile *));
 	pl->p[0] = p;
+	pl->len++;
 }
 
 void
@@ -421,20 +505,28 @@ profile_list_write(const ProfileList *pl)
 			fputc('\n', fp);
 	}
 
+	fflush(fp);
+	if (fsync(fileno(fp)) != 0)
+		warn("fsync:");
 	fclose(fp);
-	rename(tmp, path);
+
+	if (rename(tmp, path) != 0) {
+		warn("rename to \"%s\":", path);
+		return -1;
+	}
 	return 0;
 }
 
 int
 profile_match(const Profile *saved, const Profile *cur)
 {
-	uint8_t *match;
+	uint8_t match[64] = {0};
 
 	if (saved->len != cur->len)
 		return 0;
 
-	match = ecalloc(cur->len, sizeof(uint8_t));
+	if (cur->len > sizeof(match))
+		return 0;
 
 	for (size_t i = 0; i < saved->len; i++) {
 		int found = 0;
@@ -447,12 +539,9 @@ profile_match(const Profile *saved, const Profile *cur)
 			}
 		}
 
-		if (!found) {
-			free(match);
+		if (!found)
 			return 0;
-		}
 	}
 
-	free(match);
 	return 1;
 }
