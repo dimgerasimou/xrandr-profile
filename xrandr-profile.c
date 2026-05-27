@@ -63,10 +63,10 @@ action_apply(const char *name)
 		goto out;
 	}
 
-	if (name)
+	if (name) {
 		warn("no matching profile named \"%s\"", name);
-
-	ret = -1;
+		ret = -1;
+	}
 
 out:
 	profile_list_free(pl);
