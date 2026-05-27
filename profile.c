@@ -313,8 +313,13 @@ profile_append(Profile *p)
 }
 
 void
-profile_print(const Profile *p)
+profile_print(const Profile *p, const unsigned int names_only)
 {
+	if (names_only && p->name[0]) {
+		puts(p->name);
+		return;
+	}
+
 	printf("Profile Name: %s\n", p->name[0] ? p->name : "(no profile name)");
 
 	for (size_t i = 0; i < p->len; i++) {

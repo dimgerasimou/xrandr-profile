@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <getopt.h>
 
 #include "profile.h"
 #include "xrandr.h"
@@ -30,9 +31,22 @@ typedef enum {
 	LIST_CURRENT,
 } Action;
 
+enum {
+	OPT_SAVE = 1000,
+	OPT_LOAD,
+	OPT_DELETE,
+	OPT_LIST,
+	OPT_LIST_ALL,
+	OPT_LIST_CURRENT,
+	OPT_NAMES,
+	OPT_VERSION,
+	OPT_HELP,
+};
+
 typedef struct {
 	Action a;
 	const char *name;
+	unsigned int names_only;
 } Options;
 
 static int
@@ -114,7 +128,7 @@ action_delete(Options *opt)
 }
 
 static void
-action_list(void)
+action_list(const unsigned int names_only)
 {
 	ProfileList *pl;
 	Profile     *cur;
@@ -124,21 +138,21 @@ action_list(void)
 
 	for (size_t i = 0; i < pl->len; i++)
 		if (profile_match(pl->p[i], cur))
-			profile_print(pl->p[i]);
+			profile_print(pl->p[i], names_only);
 
 	profile_list_free(pl);
 	profile_free(cur);
 }
 
 static void
-action_list_all(void)
+action_list_all(const unsigned int names_only)
 {
 	ProfileList *pl;
 
 	pl  = profile_list_read();
 
 	for (size_t i = 0; i < pl->len; i++)
-		profile_print(pl->p[i]);
+		profile_print(pl->p[i], names_only);
 
 	profile_list_free(pl);
 }
@@ -150,7 +164,7 @@ action_list_current(void)
 
 	cur = xr_active_profile();
 
-	profile_print(cur);
+	profile_print(cur, 0);
 	profile_free(cur);
 }
 
@@ -158,103 +172,92 @@ static void
 usage(void)
 {
 	printf("usage: %s [options]\n%s", get_name(),
-	       "  where options are:\n"
-	       "  --help\n"
-	       "  --version\n"
-	       "  --save <profile>\n"
-	       "  --load <profile>\n"
-	       "  --delete <profile>\n"
-	       "  --list\n"
-	       "  --list-all\n"
-	       "  --list-current\n"
-	);
+	      "\tOptions:\n"
+	      "\t\t[--help][--version]\n"
+	      "\t\t[--load profile][--save profile][--delete profile]\n"
+	      "\t\t[--list][--list-all][--list-current][--names]\n"
+	      "\n"
+	      "--help              Print this message and exit\n"
+	      "--version           Print version and exit\n"
+	      "--save              Save current profile\n"
+	      "--load              Load selected profile\n"
+	      "--delete            Delete selected profile\n"
+	      "--list              List profiles matching configuration\n"
+	      "--list-all          List all profiles\n"
+	      "--list-current      List current profile properties\n"
+	      "--names             Print only the profile names\n");
 }
 
-static const char *
-match_opt(const char *arg, const char *name)
+static int
+options_parse(Options *o, const int argc, char *argv[])
 {
-	const char *p = arg;
-	size_t n;
+	o->name = NULL;
+	o->a = AUTO;
+	o->names_only = 0;
 
-	if (*p++ != '-')
-		return NULL;
-	if (*p == '-')
-		p++;
+	struct option longopts[] = {
+		{ "save",         required_argument, 0, OPT_SAVE         },
+		{ "load",         required_argument, 0, OPT_LOAD         },
+		{ "delete",       required_argument, 0, OPT_DELETE       },
+		{ "names",        no_argument,       0, OPT_NAMES        },
+		{ "list",         no_argument,       0, OPT_LIST         },
+		{ "list-all",     no_argument,       0, OPT_LIST_ALL     },
+		{ "list-current", no_argument,       0, OPT_LIST_CURRENT },
+		{ "help",         no_argument,       0, OPT_HELP         },
+		{ "version",      no_argument,       0, OPT_VERSION      },
+		{ 0,              0,                 0, 0                },
+	};
 
-	n = strlen(name);
-	if (strncmp(p, name, n) != 0)
-		return NULL;
-	if (p[n] == '\0')
-		return "";
-	if (p[n] == '=')
-		return p + n + 1;
-	return NULL;
-}
+	int opt;
+	while ((opt = getopt_long(argc, argv, "", longopts, NULL)) != -1) {
+		switch (opt) {
+		case OPT_SAVE:
+			o->a = SAVE;
+			o->name=optarg;
+			break;
 
-static void
-options_parse(Options *opt, const int argc, const char *argv[])
-{
-	const char *val;
+		case OPT_LOAD:
+			o->a = LOAD;
+			o->name=optarg;
+			break;
 
-	opt->name = NULL;
-	opt->a = AUTO;
+		case OPT_DELETE:
+			o->a = DELETE;
+			o->name=optarg;
+			break;
 
-	for (int i = 1; i < argc; i++) {
-		if (match_opt(argv[i], "help") || match_opt(argv[i], "h")) {
+		case OPT_LIST:
+			o->a = LIST;
+			break;
+
+		case OPT_LIST_ALL:
+			o->a = LIST_ALL;
+			break;
+
+		case OPT_LIST_CURRENT:
+			o->a = LIST_CURRENT;
+			break;
+
+		case OPT_NAMES:
+			o->names_only = 1;
+			break;
+
+		case OPT_HELP:
 			usage();
 			exit(0);
-		}
-		if (match_opt(argv[i], "version") || match_opt(argv[i], "v")) {
-			printf("%s-"VERSION"\n", get_name());
+
+		case OPT_VERSION:
+			fputs("xcoffeebreak-"VERSION"\n", stdout);
 			exit(0);
+
+		default:
+			fputc('\n', stderr);
+			usage();
+			exit(1);
 		}
-		if ((val = match_opt(argv[i], "save")) != NULL) {
-			if (val[0] == '\0') {
-				if (++i >= argc)
-					argerr("%s requires an argument", argv[i-1]);
-				opt->name = argv[i];
-			} else {
-				opt->name = val;
-			}
-			opt->a = SAVE;
-			break;
-		}
-		if ((val = match_opt(argv[i], "load")) != NULL) {
-			if (val[0] == '\0') {
-				if (++i >= argc)
-					argerr("%s requires an argument", argv[i-1]);
-				opt->name = argv[i];
-			} else {
-				opt->name = val;
-			}
-			opt->a = LOAD;
-			break;
-		}
-		if ((val = match_opt(argv[i], "delete")) != NULL) {
-			if (val[0] == '\0') {
-				if (++i >= argc)
-					argerr("%s requires an argument", argv[i-1]);
-				opt->name = argv[i];
-			} else {
-				opt->name = val;
-			}
-			opt->a = DELETE;
-			break;
-		}
-		if (match_opt(argv[i], "list")) {
-			opt->a = LIST;
-			break;
-		}
-		if (match_opt(argv[i], "list-all")) {
-			opt->a = LIST_ALL;
-			break;
-		}
-		if (match_opt(argv[i], "list-current")) {
-			opt->a = LIST_CURRENT;
-			break;
-		}
-		argerr("Invalid argument '%s'", argv[i]);
 	}
+
+	return 0;
 }
 
 int
@@ -264,7 +267,7 @@ main (int argc, char *argv[])
 	int     ret = 0;
 
 	set_name(argv[0]);
-	options_parse(&opt, argc, (const char**) argv);
+	options_parse(&opt, argc, argv);
 	xr_init();
 
 	switch (opt.a) {
@@ -289,11 +292,11 @@ main (int argc, char *argv[])
 		break;
 	
 	case LIST:
-		action_list();
+		action_list(opt.names_only);
 		break;
 	
 	case LIST_ALL:
-		action_list_all();
+		action_list_all(opt.names_only);
 		break;
 	
 	case LIST_CURRENT:

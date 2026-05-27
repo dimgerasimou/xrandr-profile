@@ -43,7 +43,7 @@ typedef struct {
 Profile     *profile_create(const char *name);
 void         profile_free(Profile *p);
 void         profile_append(Profile *p);
-void         profile_print(const Profile *p);
+void         profile_print(const Profile *p, const unsigned int names_only);
 
 ProfileList *profile_list_create(void);
 void         profile_list_free(ProfileList *pl);
