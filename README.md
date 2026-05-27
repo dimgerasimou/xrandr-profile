@@ -1,8 +1,8 @@
 # xrandr-profile
 
-A lightweight **XRandr** profile manager. Saves and restores display configurations based on connected hardware, with automatic profile matching via EDID.
+A lightweight **XRandR** profile manager. Saves and restores display configurations based on connected hardware, with automatic profile matching via EDID.
 Useful when you frequently switch between setups or power profiles, thus changing the output names and want your layout restored without heavy, complex and
-difficult to maintain `XRandr` scripts.
+difficult to maintain `XRandR` scripts.
 
 ## Build / install
 
