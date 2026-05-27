@@ -84,8 +84,7 @@ action_save(Options *opt)
 	pl  = profile_list_read();
 	cur = xr_active_profile();
 
-	strncpy(cur->name, opt->name, sizeof(cur->name));
-	cur->name[sizeof(cur->name)-1] = '\0';
+	snprintf(cur->name, sizeof(cur->name), "%s", opt->name);
 
 	profile_list_delete(pl, (char*) opt->name);
 	profile_list_prepend(pl,cur);
