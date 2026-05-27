@@ -9,6 +9,7 @@ CPPFLAGS += -MMD -MP -DVERSION=\"${VERSION}\"
 LDLIBS   ?= -lX11 -lXrandr -lXrender -lm
 
 PREFIX    ?= /usr/local
+MANPREFIX ?= ${PREFIX}/share/man
 BINDIR    := bin
 OBJDIR    := obj
 
@@ -55,11 +56,14 @@ clean:
 install: $(TARGET)
 	@$(PRINTF) "$(COLOR_CYAN)Installing $(BIN) at:$(COLOR_RESET) %s\n" "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
 	@install -d $(DESTDIR)$(PREFIX)/bin
+	@install -d $(DESTDIR)$(MANPREFIX)/man1
 	@install -m 755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(BIN)
+	@sed "s/VERSION/$(VERSION)/g" < $(BIN).1 > $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
+	@chmod 644 $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
 
 uninstall:
 	@$(PRINTF) "$(COLOR_CYAN)Uninstalling $(BIN) from:$(COLOR_RESET) %s\n" "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
-	@rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)
+	@rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN) $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
 
 -include $(DEPS)
 

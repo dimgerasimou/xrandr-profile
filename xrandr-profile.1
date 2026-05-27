@@ -1,0 +1,108 @@
+.TH XRANDR-PROFILE 1 "May 2026" "xrandr-profile VERSION" "General Commands Manual"
+.SH NAME
+xrandr-profile \- save and restore XRandR display profiles
+.SH SYNOPSIS
+.B xrandr-profile
+.RB [ \-\-save
+.IR profile ]
+.RB [ \-\-load
+.IR profile ]
+.RB [ \-\-delete
+.IR profile ]
+.RB [ \-\-list ]
+.RB [ \-\-list-all ]
+.RB [ \-\-list-current ]
+.RB [ \-\-version ]
+.RB [ \-\-help ]
+
+.SH DESCRIPTION
+.B xrandr-profile
+is a lightweight XRandR profile manager.
+
+It saves and restores display configurations based on connected monitor
+hardware using EDID matching, allowing layouts to be restored even when
+monitors appear under different output names.
+
+Profiles store monitor configuration properties including position,
+resolution, refresh rate, rotation, reflection, panning, and scaling
+transform.
+
+.PP
+When run without arguments,
+.B xrandr-profile
+automatically applies the most recently used profile matching the current
+monitor configuration, if available.
+
+.SH OPTIONS
+
+.TP
+.BI \-\-save " profile"
+Save the current display configuration as
+.IR profile .
+
+.TP
+.BI \-\-load " profile"
+Load the specified
+.IR profile .
+
+.TP
+.BI \-\-delete " profile"
+Delete the specified
+.IR profile .
+
+.TP
+.B \-\-list
+List saved profiles matching the current monitor configuration.
+
+.TP
+.B \-\-list-all
+List all saved profiles.
+
+.TP
+.B \-\-list-current
+Print the current active display configuration.
+
+.TP
+.B \-\-version
+Print version information and exit.
+
+.TP
+.B \-\-help
+Display usage information and exit.
+
+.SH FILES
+
+.TP
+.I $XDG_CONFIG_HOME/xrandr-profile/profiles
+Default profile storage directory.
+
+.TP
+.I ~/.config/xrandr-profile/profiles
+Fallback profile storage directory when
+.B XDG_CONFIG_HOME
+is unset.
+
+.SH EXAMPLES
+
+.TP
+Save the current layout:
+.B xrandr-profile --save work
+
+.TP
+Restore a saved layout:
+.B xrandr-profile --load docked
+
+.TP
+Automatically restore the last matching profile:
+.B xrandr-profile
+
+.SH SEE ALSO
+.BR xrandr (1),
+.BR X (7),
+.BR autorandr (1)
+
+.SH AUTHOR
+Written by Dimitris Gerasimou.
+
+.SH LICENSE
+GNU General Public License v3.
