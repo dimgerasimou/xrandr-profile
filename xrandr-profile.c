@@ -86,7 +86,7 @@ action_save(Options *opt)
 
 	snprintf(cur->name, sizeof(cur->name), "%s", opt->name);
 
-	profile_list_delete(pl, (char*) opt->name);
+	profile_list_delete(pl, opt->name);
 	profile_list_prepend(pl,cur);
 
 	if (profile_list_write(pl))
@@ -104,7 +104,7 @@ action_delete(Options *opt)
 
 	pl  = profile_list_read();
 
-	profile_list_delete(pl, (char*) opt->name);
+	profile_list_delete(pl, opt->name);
 
 	if (profile_list_write(pl))
 		ret = -1;

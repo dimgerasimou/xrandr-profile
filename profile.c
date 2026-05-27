@@ -394,7 +394,7 @@ profile_list_prepend(ProfileList *pl, Profile *p)
 }
 
 void
-profile_list_delete(ProfileList *pl, char *name)
+profile_list_delete(ProfileList *pl, const char *name)
 {
 	if (!pl || !name)
 		return;
