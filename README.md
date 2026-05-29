@@ -32,7 +32,7 @@ xrandr-profile --list-current     # print current active layout
 xrandr-profile --delete work      # delete saved profile "work"
 xrandr-profile                    # auto-match and apply last used matching profile
 
-xrandr-profile --list --name | fzf | xargs xrandr-profile --load # select with fzf profile to load
+xrandr-profile --list --names | fzf | xargs xrandr-profile --load # select with fzf profile to load
 ```
 
 ## Features
