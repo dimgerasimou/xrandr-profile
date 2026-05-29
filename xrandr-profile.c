@@ -247,7 +247,7 @@ options_parse(Options *o, const int argc, char *argv[])
 			exit(0);
 
 		case OPT_VERSION:
-			fputs("xcoffeebreak-"VERSION"\n", stdout);
+			printf("%s-"VERSION"\n", get_name());
 			exit(0);
 
 		default:
