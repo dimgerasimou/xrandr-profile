@@ -84,7 +84,7 @@ get_edid(Display *dpy, const RROutput output, Monitor *m)
 			dst[j] = '\0';
 	}
 
-	m->edid.hash = fnv1a(data, np);
+	m->edid.hash = fnv1a(data, 128);
 
 	if (serial[0])
 		snprintf(m->edid.serial, sizeof(m->edid.serial), "%s", serial);
