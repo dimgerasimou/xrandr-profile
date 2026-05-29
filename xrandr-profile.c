@@ -67,13 +67,13 @@ action_apply(const char *name)
 
 		Profile *sel = pl->p[i];
 
-		memmove(&pl->p[1], &pl->p[0], i * sizeof(Profile *));
-		pl->p[0] = sel;
-
 		xr_apply_profile(sel);
 
-		if (!name && i == 0)
+		if (i == 0)
 			goto out;
+
+		memmove(&pl->p[1], &pl->p[0], i * sizeof(Profile *));
+		pl->p[0] = sel;
 
 		if (profile_list_write(pl))
 			ret = -1;
