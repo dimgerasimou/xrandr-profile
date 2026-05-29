@@ -72,6 +72,9 @@ action_apply(const char *name)
 
 		xr_apply_profile(sel);
 
+		if (!name && i == 0)
+			goto out;
+
 		if (profile_list_write(pl))
 			ret = -1;
 		goto out;
