@@ -258,7 +258,7 @@ options_parse(Options *o, const int argc, char *argv[])
 			exit(0);
 
 		case OPT_VERSION:
-			printf("%s-"VERSION"\n", get_name());
+			puts("xrandr-profile-"VERSION"\n");
 			exit(0);
 
 		default:
