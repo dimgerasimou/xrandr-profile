@@ -87,7 +87,7 @@ get_edid(Display *dpy, const RROutput output, Monitor *m)
 			continue;
 
 		snprintf(dst, 14, "%.13s", (const char *)(d + 5));
-		for (int j = strlen(dst) - 1; j >= 0 && dst[j] <= ' '; j--)
+		for (int j = (int)strlen(dst) - 1; j >= 0 && dst[j] <= ' '; j--)
 			dst[j] = '\0';
 	}
 
