@@ -12,6 +12,13 @@
 #include "profile.h"
 #include "utils.h"
 
+typedef struct {
+	RROutput       output;
+	XRROutputInfo *info;
+	uint64_t       hash;
+	int            used;
+} OutCache;
+
 static Display *dpy;
 static XRRScreenResources *res;
 
@@ -167,6 +174,162 @@ find_crtc(XRROutputInfo *info, const RRCrtc *used, int nused)
 	return None;
 }
 
+static int
+build_output_cache(XRRScreenResources *r, OutCache *cache, int max)
+{
+	int n = 0;
+
+	for (int j = 0; j < r->noutput && n < max; j++) {
+		XRROutputInfo *oi = XRRGetOutputInfo(dpy, r, r->outputs[j]);
+		if (!oi)
+			continue;
+		if (oi->connection != RR_Connected) {
+			XRRFreeOutputInfo(oi);
+			continue;
+		}
+
+		Monitor tmp = {0};
+		get_edid(dpy, r->outputs[j], &tmp);
+
+		cache[n].output = r->outputs[j];
+		cache[n].info   = oi;
+		cache[n].hash   = tmp.edid.hash;
+		cache[n].used   = 0;
+		n++;
+	}
+
+	return n;
+}
+
+static void
+disable_all_crtcs(XRRScreenResources *r)
+{
+	for (int i = 0; i < r->ncrtc; i++) {
+		XRRCrtcInfo *crtc = XRRGetCrtcInfo(dpy, r, r->crtcs[i]);
+		if (!crtc)
+			continue;
+		if (crtc->mode != None)
+			XRRSetCrtcConfig(dpy, r, r->crtcs[i], CurrentTime,
+			                 0, 0, None, RR_Rotate_0, NULL, 0);
+		XRRFreeCrtcInfo(crtc);
+	}
+}
+
+static void
+compute_framebuffer(const Profile *p, int *out_w, int *out_h)
+{
+	int new_w = 0, new_h = 0;
+
+	for (size_t i = 0; i < p->len; i++) {
+		const Monitor *m = &p->m[i];
+
+		if (!m->enabled)
+			continue;
+
+		int rot  = m->rotation & 0xf;
+		int fb_w = (rot == RR_Rotate_90 || rot == RR_Rotate_270) ? m->h : m->w;
+		int fb_h = (rot == RR_Rotate_90 || rot == RR_Rotate_270) ? m->w : m->h;
+
+		if (m->has_transform
+		        && m->transform[0][0] > 1e-9
+		        && m->transform[1][1] > 1e-9) {
+			fb_w = (int)ceil((double)fb_w / m->transform[0][0]);
+			fb_h = (int)ceil((double)fb_h / m->transform[1][1]);
+		}
+
+		int right  = m->x + fb_w;
+		int bottom = m->y + fb_h;
+
+		if (m->pan_w && m->pan_h) {
+			if (m->pan_x + (int)m->pan_w > right)
+				right = m->pan_x + (int)m->pan_w;
+			if (m->pan_y + (int)m->pan_h > bottom)
+				bottom = m->pan_y + (int)m->pan_h;
+		}
+
+		if (right  > new_w) new_w = right;
+		if (bottom > new_h) new_h = bottom;
+	}
+
+	*out_w = new_w < 1 ? 1 : new_w;
+	*out_h = new_h < 1 ? 1 : new_h;
+}
+
+static RROutput
+apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
+              int ncache, RRCrtc *used, int *nused, int maxused)
+{
+	XRROutputInfo *info   = NULL;
+	RROutput       output = None;
+
+	for (int j = 0; j < ncache; j++) {
+		if (!cache[j].used && cache[j].hash == m->edid.hash) {
+			output        = cache[j].output;
+			info          = cache[j].info;
+			cache[j].used = 1;
+			break;
+		}
+	}
+
+	if (!info) {
+		warn("No output found for monitor \"%s\" (hash=%" PRIu64 ")",
+		     m->edid.name, m->edid.hash);
+		return None;
+	}
+
+	RRMode mode_id = find_mode(r, info, m->w, m->h, m->rate);
+	if (mode_id == None) {
+		warn("No mode %ux%u@%.2f for monitor \"%s\"",
+		     m->w, m->h, m->rate, m->edid.name);
+		return None;
+	}
+
+	if (*nused >= maxused) {
+		warn("Too many active CRTCs, skipping monitor \"%s\"", m->edid.name);
+		return None;
+	}
+
+	RRCrtc crtc = find_crtc(info, used, *nused);
+	if (crtc == None) {
+		warn("No CRTC available for monitor \"%s\"", m->edid.name);
+		return None;
+	}
+	used[(*nused)++] = crtc;
+
+	if (XRRSetCrtcConfig(dpy, r, crtc, CurrentTime, m->x, m->y,
+	                     mode_id, m->rotation, &output, 1) != RRSetConfigSuccess) {
+		warn("XRRSetCrtcConfig failed for monitor \"%s\"", m->edid.name);
+		return None;
+	}
+
+	XTransform xf;
+	if (m->has_transform) {
+		for (int ri = 0; ri < 3; ri++)
+			for (int ci = 0; ci < 3; ci++)
+				xf.matrix[ri][ci] = XDoubleToFixed(m->transform[ri][ci]);
+	} else {
+		xf = (XTransform){{
+			{ XDoubleToFixed(1), 0, 0 },
+			{ 0, XDoubleToFixed(1), 0 },
+			{ 0, 0, XDoubleToFixed(1) },
+		}};
+	}
+	XRRSetCrtcTransform(dpy, crtc, &xf, "bilinear", NULL, 0);
+
+	if (m->pan_w && m->pan_h) {
+		XRRPanning pan = {0};
+		pan.timestamp = CurrentTime;
+		pan.left   = m->pan_x;
+		pan.top    = m->pan_y;
+		pan.width  = m->pan_w;
+		pan.height = m->pan_h;
+		if (XRRSetPanning(dpy, r, crtc, &pan) != RRSetConfigSuccess)
+			warn("XRRSetPanning failed for monitor \"%s\"", m->edid.name);
+	}
+
+	return output;
+}
+
 void
 xr_init(void)
 {
@@ -263,83 +426,28 @@ xr_active_profile(void)
 	return p;
 }
 
-
 void
 xr_apply_profile(const Profile *p)
 {
+	enum { MAXOUT = 64, MAXCRTC = 64 };
 	XRRScreenResources *r;
 	Window              root;
 	RROutput            primary = None;
-	RRCrtc              used_crtcs[64];
+	RRCrtc              used_crtcs[MAXCRTC];
 	int                 nused = 0;
-
-	struct {
-		RROutput       output;
-		XRROutputInfo *info;
-		uint64_t       hash;
-	} cache[64];
-	int ncache = 0;
+	OutCache            cache[MAXOUT];
+	int                 ncache;
+	int                 new_w, new_h;
 
 	root = DefaultRootWindow(dpy);
-	r    = XRRGetScreenResources(dpy, root);
+
+	r = XRRGetScreenResources(dpy, root);
 	if (!r)
 		die("Can't get screen resources");
 
-	for (int j = 0; j < r->noutput && ncache < (int)(sizeof(cache)/sizeof(*cache)); j++) {
-		XRROutputInfo *oi = XRRGetOutputInfo(dpy, r, r->outputs[j]);
-		if (!oi)
-			continue;
-		if (oi->connection != RR_Connected) {
-			XRRFreeOutputInfo(oi);
-			continue;
-		}
-
-		Monitor tmp = {0};
-		get_edid(dpy, r->outputs[j], &tmp);
-
-		cache[ncache].output = r->outputs[j];
-		cache[ncache].info   = oi;
-		cache[ncache].hash   = tmp.edid.hash;
-		ncache++;
-	}
-
-	for (int i = 0; i < r->ncrtc; i++) {
-		XRRCrtcInfo *crtc = XRRGetCrtcInfo(dpy, r, r->crtcs[i]);
-		if (!crtc)
-			continue;
-		if (crtc->mode != None)
-			XRRSetCrtcConfig(dpy, r, r->crtcs[i], CurrentTime,
-			                 0, 0, None, RR_Rotate_0, NULL, 0);
-		XRRFreeCrtcInfo(crtc);
-	}
-
-	int new_w = 0, new_h = 0;
-
-	for (size_t i = 0; i < p->len; i++) {
-		const Monitor *m = &p->m[i];
-
-		if (!m->enabled)
-			continue;
-
-		int rot  = m->rotation & 0xf;
-		int fb_w = (rot == RR_Rotate_90 || rot == RR_Rotate_270) ? m->h : m->w;
-		int fb_h = (rot == RR_Rotate_90 || rot == RR_Rotate_270) ? m->w : m->h;
-
-		if (m->has_transform
-		        && m->transform[0][0] > 1e-9
-		        && m->transform[1][1] > 1e-9) {
-			fb_w = (int)ceil((double)fb_w / m->transform[0][0]);
-			fb_h = (int)ceil((double)fb_h / m->transform[1][1]);
-		}
-
-		int right  = m->x + fb_w;
-		int bottom = m->y + fb_h;
-		if (right  > new_w) new_w = right;
-		if (bottom > new_h) new_h = bottom;
-	}
-
-	if (new_w < 1) new_w = 1;
-	if (new_h < 1) new_h = 1;
+	ncache = build_output_cache(r, cache, MAXOUT);
+	disable_all_crtcs(r);
+	compute_framebuffer(p, &new_w, &new_h);
 
 	Screen *scr   = DefaultScreenOfDisplay(dpy);
 	double  dpi_x = (double)scr->width  / scr->mwidth;
@@ -354,66 +462,12 @@ xr_apply_profile(const Profile *p)
 	for (size_t i = 0; i < p->len; i++) {
 		const Monitor *m = &p->m[i];
 
-		RROutput       output = None;
-		XRROutputInfo *info   = NULL;
-
-		for (int j = 0; j < ncache; j++) {
-			if (cache[j].hash == m->edid.hash) {
-				output = cache[j].output;
-				info   = cache[j].info;
-				break;
-			}
-		}
-
-		if (!info) {
-			warn("No output found for monitor \"%s\" (hash=%" PRIu64 ")",
-			     m->edid.name, m->edid.hash);
-			continue;
-		}
-
 		if (!m->enabled)
 			continue;
 
-		RRMode mode_id = find_mode(r, info, m->w, m->h, m->rate);
-		if (mode_id == None) {
-			warn("No mode %ux%u@%.2f for monitor \"%s\"",
-			     m->w, m->h, m->rate, m->edid.name);
-			continue;
-		}
-
-		RRCrtc crtc = find_crtc(info, used_crtcs, nused);
-		if (crtc == None) {
-			warn("No CRTC available for monitor \"%s\"", m->edid.name);
-			continue;
-		}
-		used_crtcs[nused++] = crtc;
-
-		Status st = XRRSetCrtcConfig(dpy, r, crtc, CurrentTime,
-		                             m->x, m->y, mode_id, m->rotation,
-		                             &output, 1);
-		if (st != RRSetConfigSuccess) {
-			warn("XRRSetCrtcConfig failed for monitor \"%s\"", m->edid.name);
-			continue;
-		}
-
-		XTransform xf;
-
-		if (m->has_transform) {
-			for (int ri = 0; ri < 3; ri++)
-				for (int ci = 0; ci < 3; ci++)
-					xf.matrix[ri][ci] = XDoubleToFixed(m->transform[ri][ci]);
-		} else {
-			xf = (XTransform){{
-				{ XDoubleToFixed(1), 0, 0 },
-				{ 0, XDoubleToFixed(1), 0 },
-				{ 0, 0, XDoubleToFixed(1) },
-			}};
-		}
-
-		XRRSetCrtcTransform(dpy, crtc, &xf, "bilinear", NULL, 0);
-
-		if (m->primary)
-			primary = output;
+		RROutput out = apply_monitor(r, m, cache, ncache, used_crtcs, &nused, MAXCRTC);
+		if (out != None && m->primary)
+			primary = out;
 	}
 
 	if (primary != None)
