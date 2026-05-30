@@ -319,8 +319,9 @@ profile_append(Profile *p)
 void
 profile_print(const Profile *p, const unsigned int names_only)
 {
-	if (names_only && p->name[0]) {
-		puts(p->name);
+	if (names_only) {
+		if (p->name[0])
+			puts(p->name);
 		return;
 	}
 
