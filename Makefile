@@ -19,6 +19,9 @@ OBJS     := $(SRCS:%.c=$(OBJDIR)/%.o)
 DEPS     := $(OBJS:.o=.d)
 TARGET   := $(BINDIR)/$(BIN)
 
+TEST     := $(OBJDIR)/test_profile
+TEST_SRC := test-profile.c profile.c utils.c
+
 COLOR  ?= 1
 PRINTF ?= printf
 
@@ -65,6 +68,11 @@ uninstall:
 	@$(PRINTF) "$(COLOR_CYAN)Uninstalling $(BIN) from:$(COLOR_RESET) %s\n" "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
 	@rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN) $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
 
+test: | $(OBJDIR)
+	@$(PRINTF) "$(COLOR_BLUE)Testing:$(COLOR_RESET) %s\n" "$(TEST)"
+	@$(CC) $(CPPFLAGS) $(CFLAGS) -o $(TEST) $(TEST_SRC)
+	@$(TEST)
+
 -include $(DEPS)
 
-.PHONY: all clean install uninstall
+.PHONY: all clean install uninstall test
