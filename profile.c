@@ -199,7 +199,7 @@ parse_monitor_line(const char *line, Monitor *m)
 			return -1;
 		}
 
-		char val[256];
+		char val[512];
 		size_t vi = 0;
 
 		if (*line == '"') {
