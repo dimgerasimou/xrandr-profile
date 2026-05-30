@@ -10,8 +10,11 @@ LDLIBS   ?= -lX11 -lXrandr -lXrender -lm
 
 PREFIX    ?= /usr/local
 MANPREFIX ?= ${PREFIX}/share/man
-BINDIR    := bin
-OBJDIR    := obj
+SRCDIR    := src
+BUILDDIR  := build
+BINDIR    := $(BUILDDIR)/bin
+OBJDIR    := $(BUILDDIR)/obj
+DOCDIR    := docs
 
 BIN      := xrandr-profile
 SRCS     := xrandr-profile.c profile.c utils.c xrandr.c
@@ -19,8 +22,11 @@ OBJS     := $(SRCS:%.c=$(OBJDIR)/%.o)
 DEPS     := $(OBJS:.o=.d)
 TARGET   := $(BINDIR)/$(BIN)
 
-TEST     := $(OBJDIR)/test_profile
-TEST_SRC := test-profile.c profile.c utils.c
+TESTSDIR := $(SRCDIR)/tests
+TESTDIR  := $(BUILDDIR)/tests
+TEST     := $(TESTDIR)/test-profile
+TESTSRC  := $(TESTSDIR)/test-profile.c
+TESTOBJS := $(OBJDIR)/profile.o $(OBJDIR)/utils.o
 
 COLOR  ?= 1
 PRINTF ?= printf
@@ -45,7 +51,7 @@ $(TARGET): $(OBJS) | $(BINDIR)
 	@$(PRINTF) "$(COLOR_GREEN)Linking:$(COLOR_RESET) %s\n" "$@"
 	@$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
 
-$(OBJDIR)/%.o: %.c | $(OBJDIR)
+$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
 	@$(PRINTF) "$(COLOR_BLUE)Compiling:$(COLOR_RESET) %s\n" "$@"
 	@$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
@@ -53,24 +59,25 @@ $(BINDIR) $(OBJDIR):
 	@mkdir -p $@
 
 clean:
-	@$(PRINTF) "$(COLOR_YELLOW)Cleaning:$(COLOR_RESET) %s %s\n" "$(BINDIR)" "$(OBJDIR)"
-	@rm -rf $(BINDIR) $(OBJDIR)
+	@$(PRINTF) "$(COLOR_YELLOW)Cleaning:$(COLOR_RESET) %s\n" "$(BUILDDIR)"
+	@rm -rf $(BUILDDIR)
 
 install: $(TARGET)
 	@$(PRINTF) "$(COLOR_CYAN)Installing $(BIN) at:$(COLOR_RESET) %s\n" "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
 	@install -d $(DESTDIR)$(PREFIX)/bin
 	@install -d $(DESTDIR)$(MANPREFIX)/man1
 	@install -m 755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(BIN)
-	@sed "s/VERSION/$(VERSION)/g" < $(BIN).1 > $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
+	@sed "s/VERSION/$(VERSION)/g" < $(DOCDIR)/$(BIN).1 > $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
 	@chmod 644 $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
 
 uninstall:
 	@$(PRINTF) "$(COLOR_CYAN)Uninstalling $(BIN) from:$(COLOR_RESET) %s\n" "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
 	@rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN) $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
 
-test: | $(OBJDIR)
+test: $(TESTOBJS) | $(OBJDIR)
+	@mkdir -p $(TESTDIR)
 	@$(PRINTF) "$(COLOR_BLUE)Testing:$(COLOR_RESET) %s\n" "$(TEST)"
-	@$(CC) $(CPPFLAGS) $(CFLAGS) -o $(TEST) $(TEST_SRC)
+	@$(CC) $(CFLAGS) -I$(SRCDIR) -o $(TEST) $(TESTSRC) $(TESTOBJS)
 	@$(TEST)
 
 -include $(DEPS)

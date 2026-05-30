@@ -1,6 +1,7 @@
 # build artifacts
 bin/
 obj/
+build/
 
 # editor artifacts
 compile_commands.json
