@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #include "profile.h"
 #include "utils.h"
@@ -39,6 +41,34 @@ one_monitor_profile(const char *name, uint64_t hash)
 	m->transform[2][2] = 1.0;
 
 	return p;
+}
+
+/* Write raw config text to $XDG_CONFIG_HOME/xrandr-profile/profiles. */
+static void
+write_config(const char *dir, const char *contents)
+{
+	char path[4096];
+
+	snprintf(path, sizeof(path), "%s/xrandr-profile", dir);
+	mkdir(path, 0755);   /* may already exist; ignore */
+
+	snprintf(path, sizeof(path), "%s/xrandr-profile/profiles", dir);
+	FILE *fp = fopen(path, "w");
+	assert(fp);
+	fputs(contents, fp);
+	fclose(fp);
+}
+
+static void
+cleanup(const char *dir)
+{
+	char path[4096];
+
+	snprintf(path, sizeof(path), "%s/xrandr-profile/profiles", dir);
+	unlink(path);
+	snprintf(path, sizeof(path), "%s/xrandr-profile", dir);
+	rmdir(path);
+	rmdir(dir);
 }
 
 static void
@@ -102,6 +132,40 @@ test_match_multiplicity(void)
 	profile_free(c);
 }
 
+static void
+test_malformed(const char *dir)
+{
+	/* One well-formed monitor followed by several broken lines. The reader
+	 * must keep the good line and drop each bad one rather than leaving a
+	 * half-parsed monitor in the profile. */
+	write_config(dir,
+		"[Profile \"broken\"]\n"
+		"monitor hash=111 name=\"Good\" serial=\"S1\" enabled=1 primary=1 "
+			"w=1920 h=1080 rate=60.00 x=0 y=0 pan_x=0 pan_y=0 "
+			"pan_w=0 pan_h=0 rotation=1\n"
+		"monitor hash=222 name=\"BadW\" enabled=1 w=99999999 h=1080\n"   /* w > UINT16_MAX */
+		"monitor hash=333 name=\"BadKey\" enabled=1 bogus=5\n"           /* unknown field   */
+		"monitor hash=444 name=\"BadXform\" enabled=1 transform=[[1,0\n" /* truncated matrix */
+	);
+
+	ProfileList *pl = profile_list_read();
+	assert(pl->len == 1);
+
+	Profile *p = pl->p[0];
+	assert(strcmp(p->name, "broken") == 0);
+	assert(p->len == 1);                       /* only the good line survived */
+	assert(p->m[0].edid.hash == 111);
+	assert(p->m[0].w == 1920 && p->m[0].h == 1080);
+
+	profile_list_free(pl);
+
+	/* A monitor line with no preceding profile header is ignored entirely. */
+	write_config(dir, "monitor hash=1 enabled=0\n");
+	pl = profile_list_read();
+	assert(pl->len == 0);
+	profile_list_free(pl);
+}
+
 int
 main(void)
 {
@@ -121,7 +185,10 @@ main(void)
 
 	test_roundtrip();
 	test_match_multiplicity();
+	test_malformed(dir);
 
-	printf("all tests passed (config dir: %s)\n", dir);
+	cleanup(dir);
+
+	printf("all tests passed\n");
 	return 0;
 }
