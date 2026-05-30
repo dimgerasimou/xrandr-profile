@@ -68,14 +68,18 @@ make_directory(const char *path)
 
 		*p = '\0';
 
-		if (mkdir(dir, 0755) != 0 && errno != EEXIST)
-			die("mkdir(%s) failed:", dir);
+		if (mkdir(dir, 0755) != 0 && errno != EEXIST) {
+			warn("mkdir(%s) failed:", dir);
+			return -1;
+		}
 
 		*p = '/';
 	}
 
-	if (mkdir(dir, 0755) != 0 && errno != EEXIST)
-		die("mkdir(%s) failed:", dir);
+	if (mkdir(dir, 0755) != 0 && errno != EEXIST) {
+		warn("mkdir(%s) failed:", dir);
+		return -1;
+	}
 
 	return 0;
 }
@@ -482,7 +486,8 @@ profile_list_write(const ProfileList *pl)
 	FILE *fp;
 
 	config_path(path, sizeof(path));
-	make_directory(path);
+	if (make_directory(path) < 0)
+		return -1;
 
 	if (strlen(path) + 4 >= PATH_MAX) {
 		warn("Path name too long: %s", path);
