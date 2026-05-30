@@ -194,6 +194,8 @@ usage(void)
 static int
 options_parse(Options *o, const int argc, char *argv[])
 {
+	int nactions = 0;
+
 	o->name = NULL;
 	o->a = AUTO;
 	o->names_only = 0;
@@ -215,29 +217,35 @@ options_parse(Options *o, const int argc, char *argv[])
 	while ((opt = getopt_long(argc, argv, "", longopts, NULL)) != -1) {
 		switch (opt) {
 		case OPT_SAVE:
+			nactions++;
 			o->a = SAVE;
 			o->name=optarg;
 			break;
 
 		case OPT_LOAD:
+			nactions++;
 			o->a = LOAD;
 			o->name=optarg;
 			break;
 
 		case OPT_DELETE:
+			nactions++;
 			o->a = DELETE;
 			o->name=optarg;
 			break;
 
 		case OPT_LIST:
+			nactions++;
 			o->a = LIST;
 			break;
 
 		case OPT_LIST_ALL:
+			nactions++;
 			o->a = LIST_ALL;
 			break;
 
 		case OPT_LIST_CURRENT:
+			nactions++;
 			o->a = LIST_CURRENT;
 			break;
 
@@ -259,6 +267,9 @@ options_parse(Options *o, const int argc, char *argv[])
 			exit(1);
 		}
 	}
+
+	if (nactions > 1)
+		argerr("only one action may be given.");
 
 	return 0;
 }
