@@ -233,8 +233,8 @@ compute_framebuffer(const Profile *p, int *out_w, int *out_h)
 		if (m->has_transform
 		        && m->transform[0][0] > 1e-9
 		        && m->transform[1][1] > 1e-9) {
-			fb_w = (int)ceil((double)fb_w / m->transform[0][0]);
-			fb_h = (int)ceil((double)fb_h / m->transform[1][1]);
+			fb_w = (int)ceil((double)fb_w * m->transform[0][0]);
+			fb_h = (int)ceil((double)fb_h * m->transform[1][1]);
 		}
 
 		int right  = m->x + fb_w;
