@@ -35,6 +35,13 @@ When run without arguments,
 automatically applies the most recently used profile matching the current
 monitor configuration, if available.
 
+.PP
+.B xrandr-profile
+can run in the background and auto apply profiles when monitors are
+connected and disconnected.
+
+Hooks, global and per profile are implemented as well.
+
 .SH OPTIONS
 
 .TP
@@ -80,6 +87,44 @@ Print version information and exit.
 .B \-\-help
 Display usage information and exit.
 
+.SH HOOKS
+.B xrandr-profile
+supports running custom executable files before and after a profile is applied.
+Hooks are searched for in the XDG configuration directory (typically
+.IR ~/.config/xrandr-profile/hooks/ ).
+
+Hooks must be regular executable files. Files starting with a dot (.) are ignored. 
+If multiple hooks exist in a directory, they are executed sequentially in alphabetical order.
+
+.SS Execution Order
+When applying a profile, hooks are executed in the following order:
+.IP 1. 3
+Global pre-hooks:
+.IR hooks/pre/
+.IP 2. 3
+Profile-specific pre-hooks:
+.IR hooks/<profile>/pre/
+.IP 3. 3
+The XRandR layout is applied.
+.IP 4. 3
+Global post-hooks:
+.IR hooks/post/
+.IP 5. 3
+Profile-specific post-hooks:
+.IR hooks/<profile>/post/
+
+.SS Environment Variables
+The following environment variables are exported to the hooks during execution:
+.TP
+.B XRANDR_PROFILE
+The name of the profile currently being applied.
+.TP
+.B XRANDR_HOOK
+The phase of the execution. Will be either
+.B pre
+or
+.BR post .
+
 .SH FILES
 
 .TP
@@ -87,10 +132,8 @@ Display usage information and exit.
 Default profile storage file.
 
 .TP
-.I ~/.config/xrandr-profile/profiles
-Fallback profile storage file when
-.B XDG_CONFIG_HOME
-is unset.
+.I $XDG_CONFIG_HOME/xrandr-profile/hooks/
+Base directory for hook scripts.
 
 .SH SIGNALS
 The following apply only while running with

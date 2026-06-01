@@ -4,6 +4,8 @@ A lightweight **XRandR** profile manager. Saves and restores display configurati
 Useful when you frequently switch between setups or power profiles, thus changing the output names and want your layout restored without heavy, complex and
 difficult to maintain `XRandR` scripts.
 
+**xrandr-profile** can apply the matching profile automatically when monitors are connected or disconnected. It also supports the execution of global and per profile hooks.
+
 ## Build / install
 
 Edit `Makefile` to match your intended configuration. Then run:
@@ -43,6 +45,7 @@ xrandr-profile --list --names | fzf | xargs xrandr-profile --load # select with 
 - **Automatic profile application**: Run without arguments to auto-apply the last used matching profile
 - **XDG-compliant storage**: Profiles stored at `$XDG_CONFIG_HOME/xrandr-profile/profiles` (defaults to `~/.config/xrandr-profile/profiles`)
 - **Hotplug watcher**: Applies the matching profile automatically when monitors are connected or disconnected.
+- **Hooks**: Supports executing global and per profile hooks.
 
 ## Running automatically
 
@@ -57,6 +60,46 @@ xrandr-profile --watch &
 
 Send `SIGHUP` (`pkill -HUP xrandr-profile`) to force an immediate re-apply —
 handy right after saving a new profile.
+
+## Hooks
+
+`xrandr-profile` supports executing custom scripts before (`pre`) and after (`post`) a profile is applied.
+Hooks can be defined globally for all profiles, or specifically for individual profiles. 
+
+Scripts are executed in alphabetical order. They must be regular executable files.
+
+### Directory Structure
+
+Place your executable scripts in the following directories inside `$XDG_CONFIG_HOME/xrandr-profile/`:
+
+- **Global Pre-hooks:** `hooks/pre/`
+- **Global Post-hooks:** `hooks/post/`
+- **Profile Pre-hooks:** `hooks/<profile_name>/pre/`
+- **Profile Post-hooks:** `hooks/<profile_name>/post/`
+
+When a profile is applied, the execution order is:
+1. Global `pre` hooks
+2. Profile-specific `pre` hooks
+3. *[Profile is applied by XRandR]*
+4. Global `post` hooks
+5. Profile-specific `post` hooks
+
+### Environment Variables
+
+When a hook is executed, `xrandr-profile` exports the following environment variables to the script:
+
+- `XRANDR_PROFILE`: The name of the profile being applied.
+- `XRANDR_HOOK`: The current execution phase (`pre` or `post`).
+
+### Example Hook
+
+A common use case is resetting your wallpaper after a monitor layout changes. You could place this script at `~/.config/xrandr-profile/hooks/post/10-wallpaper.sh`:
+
+```bash
+#!/bin/sh
+# Re-apply wallpaper using feh
+feh --bg-fill /path/to/my/wallpaper.jpg
+```
 
 ## License
 
