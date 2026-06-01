@@ -35,7 +35,7 @@ refresh_rate(const XRRModeInfo *m)
 	if (m->modeFlags & RR_Interlace)
 		vtotal /= 2;
 
-	return m->dotClock / (m->hTotal * vtotal);
+	return (double) m->dotClock / (m->hTotal * vtotal);
 }
 
 static uint64_t
@@ -319,8 +319,8 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 	if (m->pan_w && m->pan_h) {
 		XRRPanning pan = {0};
 		pan.timestamp = CurrentTime;
-		pan.left   = m->pan_x;
-		pan.top    = m->pan_y;
+		pan.left   = (unsigned int)m->pan_x;
+		pan.top    = (unsigned int)m->pan_y;
 		pan.width  = m->pan_w;
 		pan.height = m->pan_h;
 		if (XRRSetPanning(dpy, r, crtc, &pan) != RRSetConfigSuccess)
@@ -393,7 +393,7 @@ xr_active_profile(void)
 				if (crtc) {
 					m->x        = crtc->x;
 					m->y        = crtc->y;
-					m->rotation = crtc->rotation;
+					m->rotation = (uint8_t)crtc->rotation;
 
 
 					for (int j = 0; j < res->nmode; j++) {
@@ -402,8 +402,8 @@ xr_active_profile(void)
 						if (mode->id != crtc->mode)
 							continue;
 
-						m->w    = mode->width;
-						m->h    = mode->height;
+						m->w    = (uint16_t)mode->width;
+						m->h    = (uint16_t)mode->height;
 						m->rate = refresh_rate(mode);
 						break;
 					}
@@ -411,10 +411,10 @@ xr_active_profile(void)
 					XRRFreeCrtcInfo(crtc);
 				}
 				if (pan) {
-					m->pan_x = pan->left;
-					m->pan_y = pan->top;
-					m->pan_w = pan->width;
-					m->pan_h = pan->height;
+					m->pan_x = (int32_t)pan->left;
+					m->pan_y = (int32_t)pan->top;
+					m->pan_w = (uint16_t)pan->width;
+					m->pan_h = (uint16_t)pan->height;
 
 					XRRFreePanning(pan);
 				}
