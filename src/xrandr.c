@@ -296,12 +296,6 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 	}
 	used[(*nused)++] = crtc;
 
-	if (XRRSetCrtcConfig(dpy, r, crtc, CurrentTime, m->x, m->y,
-	                     mode_id, m->rotation, &output, 1) != RRSetConfigSuccess) {
-		warn("XRRSetCrtcConfig failed for monitor \"%s\"", m->edid.name);
-		return None;
-	}
-
 	XTransform xf;
 	if (m->has_transform) {
 		for (int ri = 0; ri < 3; ri++)
@@ -315,6 +309,12 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 		}};
 	}
 	XRRSetCrtcTransform(dpy, crtc, &xf, "bilinear", NULL, 0);
+
+	if (XRRSetCrtcConfig(dpy, r, crtc, CurrentTime, m->x, m->y,
+	                     mode_id, m->rotation, &output, 1) != RRSetConfigSuccess) {
+		warn("XRRSetCrtcConfig failed for monitor \"%s\"", m->edid.name);
+		return None;
+	}
 
 	if (m->pan_w && m->pan_h) {
 		XRRPanning pan = {0};
