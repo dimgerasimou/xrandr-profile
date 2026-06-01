@@ -451,8 +451,8 @@ xr_apply_profile(const Profile *p)
 	compute_framebuffer(p, &new_w, &new_h);
 
 	Screen *scr   = DefaultScreenOfDisplay(dpy);
-	double  dpi_x = (double)scr->width  / scr->mwidth;
-	double  dpi_y = (double)scr->height / scr->mheight;
+	double  dpi_x = scr->mwidth  > 0 ? (double)scr->width  / scr->mwidth  : 96.0 / 25.4;
+	double  dpi_y = scr->mheight > 0 ? (double)scr->height / scr->mheight : 96.0 / 25.4;
 	int     mm_w  = (int)((double)new_w / dpi_x);
 	int     mm_h  = (int)((double)new_h / dpi_y);
 	if (mm_w < 1) mm_w = 1;
