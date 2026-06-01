@@ -194,10 +194,14 @@ parse_monitor_line(const char *line, Monitor *m)
 			key[ki++] = *line++;
 		key[ki] = '\0';
 
-		if (*line++ != '=') {
-			warn("Missing '=' after key \"%s\"", key);
+		if (*line != '=') {
+			if (ki == sizeof(key) - 1)
+				warn("Key too long: \"%s...\"", key);
+			else
+				warn("Missing '=' after key \"%s\"", key);
 			return -1;
 		}
+		line++;
 
 		char val[512];
 		size_t vi = 0;
