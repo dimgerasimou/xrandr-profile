@@ -26,7 +26,6 @@ typedef struct {
 } OutCache;
 
 static Display *dpy;
-static XRRScreenResources *res;
 
 static double
 refresh_rate(const XRRModeInfo *m)
@@ -339,40 +338,37 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 void
 xr_init(void)
 {
-	Window root;
-
 	dpy = XOpenDisplay(NULL);
 
 	if (dpy == NULL)
 		die("Can't open X display");
-
-	root = DefaultRootWindow(dpy);
-	res = XRRGetScreenResourcesCurrent(dpy, root);
-
-	if (res == NULL)
-		die("Can't get Current Screen Resources");
 }
 
 void
 xr_free(void)
 {
-	XRRFreeScreenResources(res);
 	XCloseDisplay(dpy);
 }
 
 Profile *
 xr_active_profile(void)
 {
-	Profile *p;
-	RROutput primary_output;
+	Profile            *p;
+	XRRScreenResources *r;
+	Window              root = DefaultRootWindow(dpy);
+	RROutput            primary_output;
+
+	r = XRRGetScreenResourcesCurrent(dpy, root);
+	if (!r)
+		die("Can't get screen resources");
 
 	p = profile_create("Active Profile");
-	primary_output = XRRGetOutputPrimary(dpy, DefaultRootWindow(dpy));
+	primary_output = XRRGetOutputPrimary(dpy, root);
 
-	for (int i = 0; i < res->noutput; i++) {
+	for (int i = 0; i < r->noutput; i++) {
 		XRROutputInfo *info;
 
-		info = XRRGetOutputInfo(dpy, res, res->outputs[i]);
+		info = XRRGetOutputInfo(dpy, r, r->outputs[i]);
 		if (!info)
 			continue;
 
@@ -383,18 +379,18 @@ xr_active_profile(void)
 			m = &p->m[p->len - 1];
 
 			snprintf(m->output, sizeof(m->output), "%s", info->name);
-			get_edid(res->outputs[i], m);
+			get_edid(r->outputs[i], m);
 			m->enabled = 0;
 
-			m->primary = (res->outputs[i] == primary_output);
+			m->primary = (r->outputs[i] == primary_output);
 
 			if (info->crtc) {
 				XRRCrtcInfo *crtc;
 				XRRPanning *pan;
 
 				m->enabled = 1;
-				crtc = XRRGetCrtcInfo(dpy, res, info->crtc);
-				pan = XRRGetPanning(dpy, res, info->crtc);
+				crtc = XRRGetCrtcInfo(dpy, r, info->crtc);
+				pan = XRRGetPanning(dpy, r, info->crtc);
 				get_transform(info->crtc, m);
 				if (crtc) {
 					m->x        = crtc->x;
@@ -402,8 +398,8 @@ xr_active_profile(void)
 					m->rotation = (uint8_t)crtc->rotation;
 
 
-					for (int j = 0; j < res->nmode; j++) {
-						const XRRModeInfo *mode = &res->modes[j];
+					for (int j = 0; j < r->nmode; j++) {
+						const XRRModeInfo *mode = &r->modes[j];
 
 						if (mode->id != crtc->mode)
 							continue;
@@ -429,6 +425,8 @@ xr_active_profile(void)
 
 		XRRFreeOutputInfo(info);
 	}
+
+	XRRFreeScreenResources(r);
 	return p;
 }
 
@@ -447,7 +445,6 @@ xr_apply_profile(const Profile *p)
 
 	root = DefaultRootWindow(dpy);
 
-	/* Poll harware fresh */
 	r = XRRGetScreenResources(dpy, root);
 	if (!r)
 		die("Can't get screen resources");
@@ -479,6 +476,8 @@ xr_apply_profile(const Profile *p)
 
 	if (primary != None)
 		XRRSetOutputPrimary(dpy, root, primary);
+
+	XSync(dpy, False);
 
 	for (int j = 0; j < ncache; j++)
 		XRRFreeOutputInfo(cache[j].info);
@@ -527,7 +526,6 @@ on_signal(int sig)
 		watch_stop = 1;
 }
 
-/* Returns 1 if this output's connection state changed (or is new). */
 static int
 track_update(RROutput out, int conn)
 {

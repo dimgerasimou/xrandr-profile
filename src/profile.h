@@ -53,5 +53,6 @@ void         profile_list_delete(ProfileList *pl, const char *name);
 ProfileList *profile_list_read(void);
 int          profile_list_write(const ProfileList *pl);
 int          profile_match(const Profile *saved, const Profile *cur);
+void         profile_config_dir(char *buf, size_t bufsz);
 
 #endif /* PROFILE_H */

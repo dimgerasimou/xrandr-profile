@@ -84,6 +84,20 @@ make_directory(const char *path)
 	return 0;
 }
 
+void
+profile_config_dir(char *buf, size_t bufsz)
+{
+	const char *xdg  = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+
+	if (xdg && xdg[0])
+		snprintf(buf, bufsz, "%s/xrandr-profile", xdg);
+	else if (home && home[0])
+		snprintf(buf, bufsz, "%s/.config/xrandr-profile", home);
+	else
+		die("\"HOME\" is not set");
+}
+
 static void
 config_path(char *buf, const size_t bufsz)
 {

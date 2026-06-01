@@ -8,10 +8,19 @@
  * To understand everything, start reading main().
  */
 
+#define _POSIX_C_SOURCE 200809L
+
+#include <dirent.h>
+#include <errno.h>
+#include <getopt.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <getopt.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "profile.h"
 #include "xrandr.h"
@@ -52,6 +61,88 @@ typedef struct {
 } Options;
 
 static int
+hook_name_cmp(const void *a, const void *b)
+{
+	return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+/* Run every executable regular file in `dir`, in sorted order, each with
+ * XRANDR_PROFILE and XRANDR_HOOK set in its environment. Missing dir is a
+ * no-op (hooks are opt-in). */
+static void
+run_hook_dir(const char *dir, const char *profile, const char *phase)
+{
+	enum { MAXHOOKS = 256 };
+	char  *names[MAXHOOKS];
+	size_t n = 0;
+	DIR   *d;
+	struct dirent *de;
+
+	if (!(d = opendir(dir)))
+		return;
+
+	while ((de = readdir(d)) && n < MAXHOOKS) {
+		if (de->d_name[0] == '.')
+			continue;
+		if ((names[n] = strdup(de->d_name)))
+			n++;
+	}
+	closedir(d);
+
+	qsort(names, n, sizeof(names[0]), hook_name_cmp);
+
+	for (size_t i = 0; i < n; i++) {
+		char        path[PATH_MAX];
+		struct stat st;
+
+		snprintf(path, sizeof(path), "%s/%s", dir, names[i]);
+
+		if (stat(path, &st) == 0 && S_ISREG(st.st_mode)
+		        && (st.st_mode & S_IXUSR)) {
+			pid_t pid = fork();
+
+			if (pid == 0) {
+				setenv("XRANDR_PROFILE", profile ? profile : "", 1);
+				setenv("XRANDR_HOOK", phase, 1);
+				execl(path, path, (char *)NULL);
+				_exit(127);
+			} else if (pid > 0) {
+				int status;
+				while (waitpid(pid, &status, 0) < 0 && errno == EINTR)
+					;
+				if (WIFEXITED(status) && WEXITSTATUS(status))
+					warn("hook \"%s\" exited with %d", names[i], WEXITSTATUS(status));
+			} else {
+				warn("fork:");
+			}
+		}
+
+		free(names[i]);
+	}
+}
+
+/* Global hooks/<phase>/ then per-profile hooks/<profile>/<phase>/. */
+static void
+run_hooks(const char *profile, const char *phase)
+{
+	char base[PATH_MAX];
+	char dir[PATH_MAX + 16];
+	int  n;
+
+	profile_config_dir(base, sizeof(base));
+
+	n = snprintf(dir, sizeof(dir), "%s/hooks/%s", base, phase);
+	if (n > 0 && (size_t)n < sizeof(dir))
+		run_hook_dir(dir, profile, phase);
+
+	if (profile && profile[0]) {
+		n = snprintf(dir, sizeof(dir), "%s/hooks/%s/%s", base, profile, phase);
+		if (n > 0 && (size_t)n < sizeof(dir))
+			run_hook_dir(dir, profile, phase);
+	}
+}
+
+static int
 action_apply(const char *name)
 {
 	ProfileList *pl;
@@ -69,7 +160,9 @@ action_apply(const char *name)
 
 		Profile *sel = pl->p[i];
 
+		run_hooks(sel->name, "pre");
 		xr_apply_profile(sel);
+		run_hooks(sel->name, "post");
 
 		if (i == 0)
 			goto out;
