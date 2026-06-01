@@ -1,4 +1,4 @@
-.TH XRANDR-PROFILE 1 "May 2026" "xrandr-profile VERSION" "General Commands Manual"
+.TH XRANDR-PROFILE 1 "June 2026" "xrandr-profile VERSION" "General Commands Manual"
 .SH NAME
 xrandr-profile \- save and restore XRandR display profiles
 .SH SYNOPSIS
@@ -12,6 +12,7 @@ xrandr-profile \- save and restore XRandR display profiles
 .RB [ \-\-list ]
 .RB [ \-\-list-all ]
 .RB [ \-\-list-current ]
+.RB [ \-\-watch ]
 .RB [ \-\-names ]
 .RB [ \-\-version ]
 .RB [ \-\-help ]
@@ -64,6 +65,10 @@ List all saved profiles.
 Print the current active display configuration.
 
 .TP
+.B \-\-watch
+Applies the matching profile automatically when monitors are connected or disconnected.
+
+.TP
 .B \-\-names
 Print only the name of the profiles.
 
@@ -87,6 +92,26 @@ Fallback profile storage file when
 .B XDG_CONFIG_HOME
 is unset.
 
+.SH SIGNALS
+The following apply only while running with
+.BR \-\-watch .
+.TP
+.B SIGHUP
+Force an immediate re-detection and re-apply. Useful after saving a new
+profile with
+.BR \-\-save .
+.TP
+.B SIGINT, SIGTERM
+Exit cleanly.
+
+.SH NOTES
+.B \-\-watch
+requires a running X session and should be started from within it, e.g. from
+your window manager's autostart or a
+.BR systemd (1)
+user service. Run at most one watcher per session. While idle it blocks on
+the X connection and consumes no CPU.
+
 .SH EXAMPLES
 
 .TP
@@ -100,6 +125,10 @@ Restore a saved layout:
 .TP
 Automatically restore the last matching profile:
 .B xrandr-profile
+
+.TP
+Watch for hotplug changes and auto-apply:
+.B xrandr-profile --watch &
 
 .SH SEE ALSO
 .BR xrandr (1),

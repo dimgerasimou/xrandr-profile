@@ -1,5 +1,11 @@
 /* See LICENSE file for copyright and license details. */
 
+#define _POSIX_C_SOURCE 200809L
+
+#include <errno.h>
+#include <poll.h>
+#include <time.h>
+#include <signal.h>
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
@@ -478,4 +484,166 @@ xr_apply_profile(const Profile *p)
 		XRRFreeOutputInfo(cache[j].info);
 
 	XRRFreeScreenResources(r);
+}
+
+/*
+ *  Hotplug watcher
+ *
+ *  Selects only RROutputChangeNotify, the precise hotplug signal,
+ *  and acts only when an output's connection state actually flips.
+ *  Mode/CRTC reconfiguration (including the events our own apply
+ *  emits) leaves connection unchanged and is ignored, so there is no
+ *  feedback loop. While idle we block in poll() forever: no wakeups
+ *  until the server reports a real change.
+ */
+
+enum { TRACK_MAX = 64 };
+
+static int rr_event_base;
+
+static struct {
+	RROutput out;
+	int      conn;
+} track[TRACK_MAX];
+static int ntrack;
+
+static volatile sig_atomic_t watch_stop;
+static volatile sig_atomic_t watch_force;
+
+static int64_t
+now_ms(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static void
+on_signal(int sig)
+{
+	if (sig == SIGHUP)
+		watch_force = 1;
+	else
+		watch_stop = 1;
+}
+
+/* Returns 1 if this output's connection state changed (or is new). */
+static int
+track_update(RROutput out, int conn)
+{
+	for (int i = 0; i < ntrack; i++) {
+		if (track[i].out != out)
+			continue;
+		if (track[i].conn == conn)
+			return 0;
+		track[i].conn = conn;
+		return 1;
+	}
+
+	if (ntrack < TRACK_MAX) {
+		track[ntrack].out  = out;
+		track[ntrack].conn = conn;
+		ntrack++;
+	}
+	return 1;
+}
+
+static void
+track_init(void)
+{
+	XRRScreenResources *r;
+
+	ntrack = 0;
+	r = XRRGetScreenResources(dpy, DefaultRootWindow(dpy));
+	if (!r)
+		return;
+
+	for (int i = 0; i < r->noutput && ntrack < TRACK_MAX; i++) {
+		XRROutputInfo *oi = XRRGetOutputInfo(dpy, r, r->outputs[i]);
+		if (!oi)
+			continue;
+		track[ntrack].out  = r->outputs[i];
+		track[ntrack].conn = oi->connection;
+		ntrack++;
+		XRRFreeOutputInfo(oi);
+	}
+
+	XRRFreeScreenResources(r);
+}
+
+void
+xr_watch_init(void)
+{
+	struct sigaction sa = {0};
+	int error_base;
+
+	if (!XRRQueryExtension(dpy, &rr_event_base, &error_base))
+		die("RandR extension not available");
+
+	track_init();
+
+	XRRSelectInput(dpy, DefaultRootWindow(dpy), RROutputChangeNotifyMask);
+	XFlush(dpy);
+
+	sa.sa_handler = on_signal;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;	/* no SA_RESTART: poll() must see EINTR */
+	sigaction(SIGINT,  &sa, NULL);
+	sigaction(SIGTERM, &sa, NULL);
+	sigaction(SIGHUP,  &sa, NULL);
+}
+
+XrEvent
+xr_wait_for_change(int debounce_ms)
+{
+	int     fd       = ConnectionNumber(dpy);
+	int     dirty    = 0;
+	int64_t deadline = 0;
+
+	for (;;) {
+		/* Drain Xlib's queue fully before blocking, so poll() is
+		 * only ever woken by genuinely new data on the socket.
+		 */
+		while (XPending(dpy)) {
+			XEvent ev;
+			XRRNotifyEvent *ne;
+			XRROutputChangeNotifyEvent *oce;
+
+			XNextEvent(dpy, &ev);
+
+			if (ev.type != rr_event_base + RRNotify)
+				continue;
+
+			ne = (XRRNotifyEvent *)&ev;
+			if (ne->subtype != RRNotify_OutputChange)
+				continue;
+
+			oce = (XRROutputChangeNotifyEvent *)&ev;
+			if (track_update(oce->output, oce->connection)) {
+				dirty    = 1;
+				deadline = now_ms() + debounce_ms;
+			}
+		}
+
+		if (watch_stop)
+			return XR_INTERRUPTED;
+
+		if (watch_force) {
+			watch_force = 0;
+			dirty       = 1;
+			deadline    = now_ms();
+		}
+
+		int timeout = -1;
+		if (dirty) {
+			int64_t rem = deadline - now_ms();
+			if (rem <= 0)
+				return XR_CHANGED;
+			timeout = (int)rem;
+		}
+
+		struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+		if (poll(&pfd, 1, timeout) < 0 && errno != EINTR)
+			die("poll:");
+	}
 }

@@ -29,6 +29,7 @@ typedef enum {
 	LIST,
 	LIST_ALL,
 	LIST_CURRENT,
+	WATCH,
 } Action;
 
 enum {
@@ -38,6 +39,7 @@ enum {
 	OPT_LIST,
 	OPT_LIST_ALL,
 	OPT_LIST_CURRENT,
+	OPT_WATCH,
 	OPT_NAMES,
 	OPT_VERSION,
 	OPT_HELP,
@@ -89,6 +91,20 @@ out:
 	profile_list_free(pl);
 	profile_free(cur);
 	return ret;
+}
+
+static int
+action_watch(void)
+{
+	enum { DEBOUNCE_MS = 300 };
+
+	xr_watch_init();
+	action_apply(NULL);
+
+	while (xr_wait_for_change(DEBOUNCE_MS) == XR_CHANGED)
+		action_apply(NULL);
+
+	return 0;
 }
 
 static int
@@ -179,6 +195,7 @@ usage(void)
 	      "\t\t[--help][--version]\n"
 	      "\t\t[--load profile][--save profile][--delete profile]\n"
 	      "\t\t[--list][--list-all][--list-current][--names]\n"
+	      "\t\t[--watch]\n"
 	      "\n"
 	      "--help              Print this message and exit\n"
 	      "--version           Print version and exit\n"
@@ -188,6 +205,7 @@ usage(void)
 	      "--list              List profiles matching configuration\n"
 	      "--list-all          List all profiles\n"
 	      "--list-current      List current profile properties\n"
+	      "--watch             Watch for hotplug changes and auto-apply\n"
 	      "--names             Print only the profile names\n");
 }
 
@@ -208,6 +226,7 @@ options_parse(Options *o, const int argc, char *argv[])
 		{ "list",         no_argument,       0, OPT_LIST         },
 		{ "list-all",     no_argument,       0, OPT_LIST_ALL     },
 		{ "list-current", no_argument,       0, OPT_LIST_CURRENT },
+		{ "watch",        no_argument,       0, OPT_WATCH        },
 		{ "help",         no_argument,       0, OPT_HELP         },
 		{ "version",      no_argument,       0, OPT_VERSION      },
 		{ 0,              0,                 0, 0                },
@@ -247,6 +266,11 @@ options_parse(Options *o, const int argc, char *argv[])
 		case OPT_LIST_CURRENT:
 			nactions++;
 			o->a = LIST_CURRENT;
+			break;
+
+		case OPT_WATCH:
+			nactions++;
+			o->a = WATCH;
 			break;
 
 		case OPT_NAMES:
@@ -315,6 +339,11 @@ main (int argc, char *argv[])
 	
 	case LIST_CURRENT:
 		action_list_current();
+		break;
+
+	case WATCH:
+		if (action_watch())
+			ret = 1;
 		break;
 	}
 

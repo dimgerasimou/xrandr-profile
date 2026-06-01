@@ -30,6 +30,7 @@ xrandr-profile --list             # print saved profiles matching current hardwa
 xrandr-profile --list-all         # print all saved profiles
 xrandr-profile --list-current     # print current active layout
 xrandr-profile --delete work      # delete saved profile "work"
+xrandr-profile --watch            # daemon: auto-apply on monitor hotplug
 xrandr-profile                    # auto-match and apply last used matching profile
 
 xrandr-profile --list --names | fzf | xargs xrandr-profile --load # select with fzf profile to load
@@ -41,6 +42,21 @@ xrandr-profile --list --names | fzf | xargs xrandr-profile --load # select with 
 - **Full layout capture**: Saves position, resolution, refresh rate, rotation, reflection, panning, and scaling transform per monitor
 - **Automatic profile application**: Run without arguments to auto-apply the last used matching profile
 - **XDG-compliant storage**: Profiles stored at `$XDG_CONFIG_HOME/xrandr-profile/profiles` (defaults to `~/.config/xrandr-profile/profiles`)
+- **Hotplug watcher**: Applies the matching profile automatically when monitors are connected or disconnected.
+
+## Running automatically
+
+`--watch` applies the current layout once on startup, then idles until a
+monitor is plugged in or removed. Start it from your session.
+
+Using a window manager autostart or `~/.xinitrc`:
+
+```sh
+xrandr-profile --watch &
+```
+
+Send `SIGHUP` (`pkill -HUP xrandr-profile`) to force an immediate re-apply —
+handy right after saving a new profile.
 
 ## License
 
