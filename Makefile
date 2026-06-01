@@ -3,13 +3,20 @@
 
 VERSION  ?= 0.3.0
 CC       ?= cc
-CFLAGS   ?= -Os
-CFLAGS   += -Wall -Wextra -Wno-deprecated-declarations -std=c11
+
+CFLAGS ?= -Os
+CFLAGS += -std=c99 -Wall -Wextra -Wpedantic -Wpointer-arith -Wshadow -Wstrict-prototypes \
+	-Wmissing-prototypes -Wold-style-definition -Wformat=2 -Wconversion -Wsign-conversion
+
 CPPFLAGS += -MMD -MP -DVERSION=\"${VERSION}\"
 LDLIBS   ?= -lX11 -lXrandr -lXrender -lm
 
+DEBUG_CFLAGS  := -g3 -O0 -fanalyzer -fsanitize=address,undefined -fno-omit-frame-pointer
+DEBUG_LDFLAGS := -fsanitize=address,leak,undefined
+
 PREFIX    ?= /usr/local
 MANPREFIX ?= ${PREFIX}/share/man
+
 SRCDIR    := src
 BUILDDIR  := build
 BINDIR    := $(BUILDDIR)/bin
@@ -20,6 +27,7 @@ BIN      := xrandr-profile
 SRCS     := xrandr-profile.c profile.c utils.c xrandr.c
 OBJS     := $(SRCS:%.c=$(OBJDIR)/%.o)
 DEPS     := $(OBJS:.o=.d)
+
 TARGET   := $(BINDIR)/$(BIN)
 
 TESTSDIR := $(SRCDIR)/tests
@@ -47,9 +55,13 @@ endif
 
 all: $(TARGET)
 
+debug: CFLAGS += $(DEBUG_CFLAGS)
+debug: LDFLAGS += $(DEBUG_LDFLAGS)
+debug: clean all
+
 $(TARGET): $(OBJS) | $(BINDIR)
 	@$(PRINTF) "$(COLOR_GREEN)Linking:$(COLOR_RESET) %s\n" "$@"
-	@$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
+	@$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
 	@$(PRINTF) "$(COLOR_BLUE)Compiling:$(COLOR_RESET) %s\n" "$@"
@@ -82,4 +94,4 @@ test: $(TESTOBJS) | $(OBJDIR)
 
 -include $(DEPS)
 
-.PHONY: all clean install uninstall test
+.PHONY: all debug clean install uninstall test
