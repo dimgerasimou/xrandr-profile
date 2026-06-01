@@ -53,7 +53,7 @@ fnv1a(const void *data, size_t len)
 }
 
 static int
-get_edid(Display *dpy, const RROutput output, Monitor *m)
+get_edid(const RROutput output, Monitor *m)
 {
 	Atom edid_atom;
 	Atom actual_type;
@@ -104,7 +104,7 @@ get_edid(Display *dpy, const RROutput output, Monitor *m)
 }
 
 static void
-get_transform(Display *dpy, RRCrtc crtc, Monitor *m)
+get_transform(RRCrtc crtc, Monitor *m)
 {
 	XRRCrtcTransformAttributes *ta;
 
@@ -189,7 +189,7 @@ build_output_cache(XRRScreenResources *r, OutCache *cache, int max)
 		}
 
 		Monitor tmp = {0};
-		get_edid(dpy, r->outputs[j], &tmp);
+		get_edid(r->outputs[j], &tmp);
 
 		cache[n].output = r->outputs[j];
 		cache[n].info   = oi;
@@ -377,7 +377,7 @@ xr_active_profile(void)
 			m = &p->m[p->len - 1];
 
 			snprintf(m->output, sizeof(m->output), "%s", info->name);
-			get_edid(dpy, res->outputs[i], m);
+			get_edid(res->outputs[i], m);
 			m->enabled = 0;
 
 			m->primary = (res->outputs[i] == primary_output);
@@ -389,7 +389,7 @@ xr_active_profile(void)
 				m->enabled = 1;
 				crtc = XRRGetCrtcInfo(dpy, res, info->crtc);
 				pan = XRRGetPanning(dpy, res, info->crtc);
-				get_transform(dpy, info->crtc, m);
+				get_transform(info->crtc, m);
 				if (crtc) {
 					m->x        = crtc->x;
 					m->y        = crtc->y;
@@ -441,6 +441,7 @@ xr_apply_profile(const Profile *p)
 
 	root = DefaultRootWindow(dpy);
 
+	/* Poll harware fresh */
 	r = XRRGetScreenResources(dpy, root);
 	if (!r)
 		die("Can't get screen resources");
