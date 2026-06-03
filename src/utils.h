@@ -15,7 +15,7 @@ const char *get_name(void);
  * Prints formated message to stderr and exits.
  * If last char is ':', prints strerror with set errno.
  */
-void die(const char *fmt, ...);
+_Noreturn void die(const char *fmt, ...);
 
 /*
  * Prints formated message to stderr and returns.
@@ -24,7 +24,7 @@ void die(const char *fmt, ...);
 void warn(const char *fmt, ...);
 
 /* Prints formated message with prompt for '--help' */
-void argerr(const char *fmt, ...);
+_Noreturn void argerr(const char *fmt, ...);
 
 /* Calls calloc and exits on failure. */
 void *ecalloc(size_t nmemb, size_t size);
