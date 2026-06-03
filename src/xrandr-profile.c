@@ -434,7 +434,8 @@ main (int argc, char *argv[])
 	Options opt;
 	int     ret = 0;
 
-	set_name(argv[0]);
+	const char *prog = strrchr(argv[0], '/');
+	set_name(prog ? prog + 1 : argv[0]);
 	options_parse(&opt, argc, argv);
 	xr_init();
 
@@ -453,20 +454,20 @@ main (int argc, char *argv[])
 		if (action_apply(opt.name))
 			ret = 1;
 		break;
-	
+
 	case DELETE:
 		if (action_delete(&opt))
 			ret = 1;
 		break;
-	
+
 	case LIST:
 		action_list(opt.names_only);
 		break;
-	
+
 	case LIST_ALL:
 		action_list_all(opt.names_only);
 		break;
-	
+
 	case LIST_CURRENT:
 		action_list_current();
 		break;
