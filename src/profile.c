@@ -19,6 +19,8 @@
 static const char *rotation_name(const uint8_t rotation);
 static const char *reflection_name (const uint8_t rotation);
 static       int   make_directory(const char *path);
+static       void  pl_grow(ProfileList *pl);
+static       void  config_path_to(char *buf, const size_t bufsz, const char *suffix);
 static       void  config_path(char *buf, const size_t bufsz);
 static       int   parse_u8(const char *s, uint8_t *out);
 static       int   parse_u16(const char *s, uint16_t *out);
@@ -97,17 +99,23 @@ make_directory(const char *path)
 }
 
 static void
-config_path(char *buf, const size_t bufsz)
+config_path_to(char *buf, const size_t bufsz, const char *suffix)
 {
 	const char *xdg  = getenv("XDG_CONFIG_HOME");
 	const char *home = getenv("HOME");
 
 	if (xdg && xdg[0])
-		snprintf(buf, bufsz, "%s/xrandr-profile/profiles", xdg);
+		snprintf(buf, bufsz, "%s/xrandr-profile%s", xdg, suffix);
 	else if (home && home[0])
-		snprintf(buf, bufsz, "%s/.config/xrandr-profile/profiles", home);
+		snprintf(buf, bufsz, "%s/.config/xrandr-profile%s", home, suffix);
 	else
 		die("\"HOME\" is not set");
+}
+
+static void
+config_path(char *buf, const size_t bufsz)
+{
+	config_path_to(buf, bufsz, "/profiles");
 }
 
 static int
@@ -384,36 +392,27 @@ profile_list_free(ProfileList *pl)
 	free(pl);
 }
 
+static void
+pl_grow(ProfileList *pl)
+{
+	if (pl->len == pl->cap) {
+		size_t newcap = pl->cap ? pl->cap * 2 : 4;
+		pl->p = erealloc(pl->p, newcap * sizeof(Profile *));
+		pl->cap = newcap;
+	}
+}
+
 void
 profile_list_append(ProfileList *pl, Profile *p)
 {
-	if (pl->len == pl->cap) {
-		size_t newcap;
-		Profile **tmp;
-
-		newcap = pl->cap ? pl->cap * 2 : 4;
-		tmp = erealloc(pl->p, newcap * sizeof(Profile *));
-		pl->p = tmp;
-		pl->cap = newcap;
-	}
-
-	pl->p[pl->len] = p;
-	pl->len++;
+	pl_grow(pl);
+	pl->p[pl->len++] = p;
 }
 
 void
 profile_list_prepend(ProfileList *pl, Profile *p)
 {
-	if (pl->len == pl->cap) {
-		size_t newcap;
-		Profile **tmp;
-
-		newcap = pl->cap ? pl->cap * 2 : 4;
-		tmp = erealloc(pl->p, newcap * sizeof(Profile *));
-		pl->p = tmp;
-		pl->cap = newcap;
-	}
-
+	pl_grow(pl);
 	memmove(pl->p + 1, pl->p, pl->len * sizeof(Profile *));
 	pl->p[0] = p;
 	pl->len++;
@@ -587,13 +586,5 @@ profile_match(const Profile *saved, const Profile *cur)
 void
 profile_config_dir(char *buf, size_t bufsz)
 {
-	const char *xdg  = getenv("XDG_CONFIG_HOME");
-	const char *home = getenv("HOME");
-
-	if (xdg && xdg[0])
-		snprintf(buf, bufsz, "%s/xrandr-profile", xdg);
-	else if (home && home[0])
-		snprintf(buf, bufsz, "%s/.config/xrandr-profile", home);
-	else
-		die("\"HOME\" is not set");
+	config_path_to(buf, bufsz, "");
 }
