@@ -60,6 +60,19 @@ typedef struct {
 	unsigned int names_only;
 } Options;
 
+static int  hook_name_cmp(const void *a, const void *b);
+static void run_hook_dir(const char *dir, const char *profile, const char *phase);
+static void run_hooks(const char *profile, const char *phase);
+static int action_save(Options *opt);
+static int action_apply(const char *name);
+static int action_delete(Options *opt);
+static void action_list(const unsigned int names_only);
+static void action_list_all(const unsigned int names_only);
+static void action_list_current(void);
+static int action_watch(void);
+static void usage(void);
+static int  options_parse(Options *o, const int argc, char *argv[]);
+
 static int
 hook_name_cmp(const void *a, const void *b)
 {
@@ -167,6 +180,28 @@ run_hooks(const char *profile, const char *phase)
 }
 
 static int
+action_save(Options *opt)
+{
+	ProfileList *pl;
+	Profile     *cur;
+	int          ret = 0;
+
+	pl  = profile_list_read();
+	cur = xr_active_profile();
+
+	snprintf(cur->name, sizeof(cur->name), "%s", opt->name);
+
+	profile_list_delete(pl, opt->name);
+	profile_list_prepend(pl,cur);
+
+	if (profile_list_write(pl))
+		ret = -1;
+
+	profile_list_free(pl);
+	return ret;
+}
+
+static int
 action_apply(const char *name)
 {
 	ProfileList *pl;
@@ -207,42 +242,6 @@ action_apply(const char *name)
 out:
 	profile_list_free(pl);
 	profile_free(cur);
-	return ret;
-}
-
-static int
-action_watch(void)
-{
-	enum { DEBOUNCE_MS = 300 };
-
-	xr_watch_init();
-	action_apply(NULL);
-
-	while (xr_wait_for_change(DEBOUNCE_MS) == XR_CHANGED)
-		action_apply(NULL);
-
-	return 0;
-}
-
-static int
-action_save(Options *opt)
-{
-	ProfileList *pl;
-	Profile     *cur;
-	int          ret = 0;
-
-	pl  = profile_list_read();
-	cur = xr_active_profile();
-
-	snprintf(cur->name, sizeof(cur->name), "%s", opt->name);
-
-	profile_list_delete(pl, opt->name);
-	profile_list_prepend(pl,cur);
-
-	if (profile_list_write(pl))
-		ret = -1;
-
-	profile_list_free(pl);
 	return ret;
 }
 
@@ -302,6 +301,20 @@ action_list_current(void)
 
 	profile_print(cur, 0);
 	profile_free(cur);
+}
+
+static int
+action_watch(void)
+{
+	enum { DEBOUNCE_MS = 300 };
+
+	xr_watch_init();
+	action_apply(NULL);
+
+	while (xr_wait_for_change(DEBOUNCE_MS) == XR_CHANGED)
+		action_apply(NULL);
+
+	return 0;
 }
 
 static void

@@ -5,10 +5,7 @@
 
 #include <string.h>
 
-/* Stores name pointer; caller must keep it alive (typically argv[0]). */
 void set_name(const char *name);
-
-/* Gets program_name ptr */
 const char *get_name(void);
 
 /*
@@ -26,13 +23,8 @@ void warn(const char *fmt, ...);
 /* Prints formated message with prompt for '--help' */
 _Noreturn void argerr(const char *fmt, ...);
 
-/* Calls calloc and exits on failure. */
 void *ecalloc(size_t nmemb, size_t size);
-
-/* Calls malloc and exits on failure. */
 void *emalloc(size_t size);
-
-/* Calls realloc and exits on failure. */
 void *erealloc(void *ptr, size_t size);
 
 #endif /* XRANDRSETUP_UTILS_H */

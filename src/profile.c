@@ -16,6 +16,18 @@
 #include "profile.h"
 #include "utils.h"
 
+static const char *rotation_name(uint8_t rotation);
+static const char *reflection_name (uint8_t rotation);
+static       int   make_directory(const char *path);
+static       void  config_path(char *buf, const size_t bufsz);
+static       int   parse_u8(const char *s, uint8_t *out);
+static       int   parse_u16(const char *s, uint16_t *out);
+static       int   parse_u64(const char *s, uint64_t *out);
+static       int   parse_i32(const char *s, int32_t *out);
+static       int   parse_double(const char *s, double *out);
+static       int   report_malformed_line(const char *key, const char *val);
+static       int   parse_monitor_line(const char *line, Monitor *m);
+
 static const char *
 rotation_name(uint8_t rotation)
 {
@@ -82,20 +94,6 @@ make_directory(const char *path)
 	}
 
 	return 0;
-}
-
-void
-profile_config_dir(char *buf, size_t bufsz)
-{
-	const char *xdg  = getenv("XDG_CONFIG_HOME");
-	const char *home = getenv("HOME");
-
-	if (xdg && xdg[0])
-		snprintf(buf, bufsz, "%s/xrandr-profile", xdg);
-	else if (home && home[0])
-		snprintf(buf, bufsz, "%s/.config/xrandr-profile", home);
-	else
-		die("\"HOME\" is not set");
 }
 
 static void
@@ -584,4 +582,18 @@ profile_match(const Profile *saved, const Profile *cur)
 	}
 
 	return 1;
+}
+
+void
+profile_config_dir(char *buf, size_t bufsz)
+{
+	const char *xdg  = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+
+	if (xdg && xdg[0])
+		snprintf(buf, bufsz, "%s/xrandr-profile", xdg);
+	else if (home && home[0])
+		snprintf(buf, bufsz, "%s/.config/xrandr-profile", home);
+	else
+		die("\"HOME\" is not set");
 }

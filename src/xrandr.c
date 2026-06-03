@@ -20,6 +20,8 @@
 #include "profile.h"
 #include "utils.h"
 
+enum { TRACK_MAX = 64 };
+
 typedef struct {
 	RROutput       output;
 	XRROutputInfo *info;
@@ -28,6 +30,30 @@ typedef struct {
 } OutCache;
 
 static Display *dpy;
+static int rr_event_base;
+static int sig_pipe[2] = { -1, -1 };
+static int ntrack;
+static volatile sig_atomic_t watch_stop;
+static volatile sig_atomic_t watch_force;
+static struct {
+	RROutput out;
+	int      conn;
+} track[TRACK_MAX];
+
+static double   refresh_rate(const XRRModeInfo *m);
+static uint64_t fnv1a(const void *data, size_t len);
+static int64_t  now_ms(void);
+static int      get_edid(const RROutput output, Monitor *m);
+static void     get_transform(RRCrtc crtc, Monitor *m);
+static RRMode   find_mode(XRRScreenResources *r, XRROutputInfo *info, uint16_t w, uint16_t h, double rate);
+static RRCrtc   find_crtc(XRROutputInfo *info, const RRCrtc *used, int nused);
+static int      build_output_cache(XRRScreenResources *r, OutCache *cache, int max);
+static void     disable_all_crtcs(XRRScreenResources *r);
+static void     compute_framebuffer(const Profile *p, int *out_w, int *out_h);
+static RROutput apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache, int ncache, RRCrtc *used, int *nused, int maxused);
+static void     on_signal(int sig);
+static int      track_update(RROutput out, int conn);
+static void     track_init(void);
 
 static double
 refresh_rate(const XRRModeInfo *m)
@@ -57,6 +83,14 @@ fnv1a(const void *data, size_t len)
 	}
 
 	return h;
+}
+
+static int64_t
+now_ms(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
 static int
@@ -337,6 +371,66 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 	return output;
 }
 
+static void
+on_signal(int sig)
+{
+	char    b = 0;
+	ssize_t r;
+
+	if (sig == SIGHUP)
+		watch_force = 1;
+	else
+		watch_stop = 1;
+
+	/* Wake any blocked poll()/waitpid(); write() is async-signal-safe. */
+	r = write(sig_pipe[1], &b, 1);
+	(void)r;
+}
+
+/* Returns 1 if this output's connection state changed (or is new). */
+static int
+track_update(RROutput out, int conn)
+{
+	for (int i = 0; i < ntrack; i++) {
+		if (track[i].out != out)
+			continue;
+		if (track[i].conn == conn)
+			return 0;
+		track[i].conn = conn;
+		return 1;
+	}
+
+	if (ntrack < TRACK_MAX) {
+		track[ntrack].out  = out;
+		track[ntrack].conn = conn;
+		ntrack++;
+	}
+	return 1;
+}
+
+static void
+track_init(void)
+{
+	XRRScreenResources *r;
+
+	ntrack = 0;
+	r = XRRGetScreenResources(dpy, DefaultRootWindow(dpy));
+	if (!r)
+		return;
+
+	for (int i = 0; i < r->noutput && ntrack < TRACK_MAX; i++) {
+		XRROutputInfo *oi = XRRGetOutputInfo(dpy, r, r->outputs[i]);
+		if (!oi)
+			continue;
+		track[ntrack].out  = r->outputs[i];
+		track[ntrack].conn = oi->connection;
+		ntrack++;
+		XRRFreeOutputInfo(oi);
+	}
+
+	XRRFreeScreenResources(r);
+}
+
 void
 xr_init(void)
 {
@@ -503,95 +597,6 @@ xr_apply_profile(const Profile *p)
  *  hook bail out, so a slow hook cannot make the daemon ignore SIGTERM.
  *  While idle, poll() blocks indefinitely: no wakeups, no CPU.
  */
-
-enum { TRACK_MAX = 64 };
-
-static int rr_event_base;
-static int sig_pipe[2] = { -1, -1 };
-
-static struct {
-	RROutput out;
-	int      conn;
-} track[TRACK_MAX];
-static int ntrack;
-
-static volatile sig_atomic_t watch_stop;
-static volatile sig_atomic_t watch_force;
-
-static int64_t
-now_ms(void)
-{
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
-
-static void
-on_signal(int sig)
-{
-	char    b = 0;
-	ssize_t r;
-
-	if (sig == SIGHUP)
-		watch_force = 1;
-	else
-		watch_stop = 1;
-
-	/* Wake any blocked poll()/waitpid(); write() is async-signal-safe. */
-	r = write(sig_pipe[1], &b, 1);
-	(void)r;
-}
-
-/* Returns 1 if this output's connection state changed (or is new). */
-static int
-track_update(RROutput out, int conn)
-{
-	for (int i = 0; i < ntrack; i++) {
-		if (track[i].out != out)
-			continue;
-		if (track[i].conn == conn)
-			return 0;
-		track[i].conn = conn;
-		return 1;
-	}
-
-	if (ntrack < TRACK_MAX) {
-		track[ntrack].out  = out;
-		track[ntrack].conn = conn;
-		ntrack++;
-	}
-	return 1;
-}
-
-static void
-track_init(void)
-{
-	XRRScreenResources *r;
-
-	ntrack = 0;
-	r = XRRGetScreenResources(dpy, DefaultRootWindow(dpy));
-	if (!r)
-		return;
-
-	for (int i = 0; i < r->noutput && ntrack < TRACK_MAX; i++) {
-		XRROutputInfo *oi = XRRGetOutputInfo(dpy, r, r->outputs[i]);
-		if (!oi)
-			continue;
-		track[ntrack].out  = r->outputs[i];
-		track[ntrack].conn = oi->connection;
-		ntrack++;
-		XRRFreeOutputInfo(oi);
-	}
-
-	XRRFreeScreenResources(r);
-}
-
-int
-xr_stop_requested(void)
-{
-	return watch_stop;
-}
-
 void
 xr_watch_init(void)
 {
@@ -684,4 +689,10 @@ xr_wait_for_change(int debounce_ms)
 		if (poll(pfd, 2, timeout) < 0 && errno != EINTR)
 			die("poll:");
 	}
+}
+
+int
+xr_stop_requested(void)
+{
+	return watch_stop;
 }
