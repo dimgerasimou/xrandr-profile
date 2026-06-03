@@ -5,7 +5,7 @@ VERSION  ?= 0.3.0
 CC       ?= cc
 
 CFLAGS ?= -Os
-CFLAGS += -std=c99 -Wall -Wextra -Wpedantic -Wpointer-arith -Wshadow -Wstrict-prototypes \
+CFLAGS += -std=c11 -Wall -Wextra -Wpedantic -Wpointer-arith -Wshadow -Wstrict-prototypes \
 	-Wmissing-prototypes -Wold-style-definition -Wformat=2 -Wconversion -Wsign-conversion
 
 CPPFLAGS += -MMD -MP -DVERSION=\"${VERSION}\"
