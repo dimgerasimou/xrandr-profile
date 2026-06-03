@@ -40,6 +40,7 @@ static struct {
 	int      conn;
 } track[TRACK_MAX];
 
+static int      x_error_handler(Display *d, XErrorEvent *e);
 static double   refresh_rate(const XRRModeInfo *m);
 static uint64_t fnv1a(const void *data, const size_t len);
 static int64_t  now_ms(void);
@@ -54,6 +55,21 @@ static RROutput apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache 
 static void     on_signal(const int sig);
 static int      track_update(const RROutput out, const int conn);
 static void     track_init(void);
+
+/* Best-effort error handler: log and continue instead of letting Xlib's
+ * default handler terminate the process. Lets --watch survive transient
+ * errors from racy hotplug states and out-of-range RandR requests. */
+static int
+x_error_handler(Display *d, XErrorEvent *e)
+{
+	char buf[256];
+
+	XGetErrorText(d, e->error_code, buf, sizeof(buf));
+	warn("X error: %s (request %u.%u, resource 0x%lx)",
+	     buf, (unsigned)e->request_code, (unsigned)e->minor_code,
+	     (unsigned long)e->resourceid);
+	return 0;
+}
 
 static double
 refresh_rate(const XRRModeInfo *m)
@@ -177,16 +193,16 @@ find_mode(const XRRScreenResources *r, const XRROutputInfo *info,
 {
 	RRMode best      = None;
 	double best_diff = 1e9;
- 
+
 	for (int i = 0; i < info->nmode; i++) {
 		for (int j = 0; j < r->nmode; j++) {
 			const XRRModeInfo *mode = &r->modes[j];
- 
+
 			if (mode->id != info->modes[i])
 				continue;
 			if (mode->width != w || mode->height != h)
 				continue;
- 
+
 			double diff = fabs(refresh_rate(mode) - rate);
 			if (diff < best_diff) {
 				best_diff = diff;
@@ -194,24 +210,24 @@ find_mode(const XRRScreenResources *r, const XRROutputInfo *info,
 			}
 		}
 	}
- 
+
 	return best;
 }
- 
+
 static RRCrtc
 find_crtc(const XRROutputInfo *info, const RRCrtc *used, const int nused)
 {
 	for (int i = 0; i < info->ncrtc; i++) {
 		RRCrtc crtc  = info->crtcs[i];
 		int    taken = 0;
- 
+
 		for (int j = 0; j < nused; j++)
 			if (used[j] == crtc) { taken = 1; break; }
- 
+
 		if (!taken)
 			return crtc;
 	}
- 
+
 	return None;
 }
 
@@ -271,6 +287,10 @@ compute_framebuffer(const Profile *p, int *out_w, int *out_h)
 		int fb_w = (rot == RR_Rotate_90 || rot == RR_Rotate_270) ? m->h : m->w;
 		int fb_h = (rot == RR_Rotate_90 || rot == RR_Rotate_270) ? m->w : m->h;
 
+		/* Transforms are assumed to be pure scale (the diagonal terms).
+		 * The parser round-trips an arbitrary 3x3, but shear or rotation
+		 * encoded in the matrix is not reflected in the size computed
+		 * here; rotation is handled separately via m->rotation above. */
 		if (m->has_transform
 		        && m->transform[0][0] > 1e-9
 		        && m->transform[1][1] > 1e-9) {
@@ -302,12 +322,13 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 {
 	XRROutputInfo *info   = NULL;
 	RROutput       output = None;
+	int            ci     = -1;
 
 	for (int j = 0; j < ncache; j++) {
 		if (!cache[j].used && cache[j].hash == m->edid.hash) {
-			output        = cache[j].output;
-			info          = cache[j].info;
-			cache[j].used = 1;
+			ci     = j;
+			output = cache[j].output;
+			info   = cache[j].info;
 			break;
 		}
 	}
@@ -335,13 +356,18 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 		warn("No CRTC available for monitor \"%s\"", m->edid.name);
 		return None;
 	}
+
+	/* Commit: claim the CRTC and the cache entry only now that the apply
+	 * can proceed, so a monitor with a duplicate EDID hash can still fall
+	 * back to this output if any step above had bailed out. */
 	used[(*nused)++] = crtc;
+	cache[ci].used   = 1;
 
 	XTransform xf;
 	if (m->has_transform) {
 		for (int ri = 0; ri < 3; ri++)
-			for (int ci = 0; ci < 3; ci++)
-				xf.matrix[ri][ci] = XDoubleToFixed(m->transform[ri][ci]);
+			for (int cj = 0; cj < 3; cj++)
+				xf.matrix[ri][cj] = XDoubleToFixed(m->transform[ri][cj]);
 	} else {
 		xf = (XTransform){{
 			{ XDoubleToFixed(1), 0, 0 },
@@ -357,7 +383,9 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 		return None;
 	}
 
-	if (m->pan_w && m->pan_h) {
+	/* Always set panning so a stale rectangle left on a reused CRTC by a
+	 * previously applied profile cannot survive; a zero rectangle clears it. */
+	{
 		XRRPanning pan = {0};
 		pan.timestamp = CurrentTime;
 		pan.left   = (unsigned int)m->pan_x;
@@ -438,6 +466,8 @@ xr_init(void)
 
 	if (dpy == NULL)
 		die("Can't open X display");
+
+	XSetErrorHandler(x_error_handler);
 }
 
 void
@@ -509,10 +539,18 @@ xr_active_profile(void)
 					XRRFreeCrtcInfo(crtc);
 				}
 				if (pan) {
-					m->pan_x = (int32_t)pan->left;
-					m->pan_y = (int32_t)pan->top;
-					m->pan_w = (uint16_t)pan->width;
-					m->pan_h = (uint16_t)pan->height;
+					/* Drivers commonly report the panning area as
+					 * the full mode at the origin even when panning
+					 * was never enabled; treat that as no panning so
+					 * saved profiles stay clean. */
+					if (!(pan->left == 0 && pan->top == 0
+					      && pan->width  == m->w
+					      && pan->height == m->h)) {
+						m->pan_x = (int32_t)pan->left;
+						m->pan_y = (int32_t)pan->top;
+						m->pan_w = (uint16_t)pan->width;
+						m->pan_h = (uint16_t)pan->height;
+					}
 
 					XRRFreePanning(pan);
 				}
@@ -549,11 +587,21 @@ xr_apply_profile(const Profile *p)
 	disable_all_crtcs(r);
 	compute_framebuffer(p, &new_w, &new_h);
 
-	Screen *scr   = DefaultScreenOfDisplay(dpy);
-	double  dpi_x = scr->mwidth  > 0 ? (double)scr->width  / scr->mwidth  : 96.0 / 25.4;
-	double  dpi_y = scr->mheight > 0 ? (double)scr->height / scr->mheight : 96.0 / 25.4;
-	int     mm_w  = (int)((double)new_w / dpi_x);
-	int     mm_h  = (int)((double)new_h / dpi_y);
+	/* Clamp to the driver's advertised range; an out-of-range request
+	 * raises BadValue, which (even with the error handler) leaves the
+	 * framebuffer untouched -- clamping keeps the apply useful instead. */
+	int minw = 0, minh = 0, maxw = 0, maxh = 0;
+	if (XRRGetScreenSizeRange(dpy, root, &minw, &minh, &maxw, &maxh)) {
+		if (new_w < minw) new_w = minw;
+		if (new_h < minh) new_h = minh;
+		if (maxw && new_w > maxw) new_w = maxw;
+		if (maxh && new_h > maxh) new_h = maxh;
+	}
+
+	/* The mm size is only a DPI hint. Use the conventional 96 dpi rather
+	 * than deriving it from the pre-resize screen, which would be stale. */
+	int mm_w = (int)((double)new_w * 25.4 / 96.0 + 0.5);
+	int mm_h = (int)((double)new_h * 25.4 / 96.0 + 0.5);
 	if (mm_w < 1) mm_w = 1;
 	if (mm_h < 1) mm_h = 1;
 
