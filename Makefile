@@ -11,8 +11,14 @@ CFLAGS += -std=c11 -Wall -Wextra -Wpedantic -Wpointer-arith -Wshadow -Wstrict-pr
 CPPFLAGS += -MMD -MP -DVERSION=\"${VERSION}\"
 LDLIBS   ?= -lX11 -lXrandr -lXrender -lm
 
-DEBUG_CFLAGS  := -g3 -O0 -fanalyzer -fsanitize=address,undefined -fno-omit-frame-pointer
+DEBUG_CFLAGS  := -g3 -O0 -fsanitize=address,undefined -fno-omit-frame-pointer
 DEBUG_LDFLAGS := -fsanitize=address,leak,undefined
+
+# -fanalyzer is GCC-only; enable it only when CC is gcc so `make debug`
+# still works under clang.
+ifneq (,$(findstring gcc,$(shell $(CC) --version 2>/dev/null)))
+DEBUG_CFLAGS += -fanalyzer
+endif
 
 PREFIX    ?= /usr/local
 MANPREFIX ?= ${PREFIX}/share/man
@@ -34,7 +40,8 @@ TESTSDIR := $(SRCDIR)/tests
 TESTDIR  := $(BUILDDIR)/tests
 TEST     := $(TESTDIR)/test-profile
 TESTSRC  := $(TESTSDIR)/test-profile.c
-TESTOBJS := $(OBJDIR)/profile.o $(OBJDIR)/utils.o
+TESTSAN  := -g3 -O0 -fsanitize=address,undefined -fno-omit-frame-pointer
+TESTSRCS := $(TESTSRC) $(SRCDIR)/profile.c $(SRCDIR)/utils.c
 
 COLOR  ?= 1
 PRINTF ?= printf
@@ -86,10 +93,10 @@ uninstall:
 	@$(PRINTF) "$(COLOR_CYAN)Uninstalling $(BIN) from:$(COLOR_RESET) %s\n" "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
 	@rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN) $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
 
-test: $(TESTOBJS) | $(OBJDIR)
+test: | $(OBJDIR)
 	@mkdir -p $(TESTDIR)
 	@$(PRINTF) "$(COLOR_BLUE)Testing:$(COLOR_RESET) %s\n" "$(TEST)"
-	@$(CC) $(CFLAGS) -I$(SRCDIR) -o $(TEST) $(TESTSRC) $(TESTOBJS)
+	@$(CC) $(filter-out -Os,$(CFLAGS)) $(TESTSAN) $(DEBUG_LDFLAGS) -I$(SRCDIR) -o $(TEST) $(TESTSRCS)
 	@$(TEST)
 
 -include $(DEPS)
