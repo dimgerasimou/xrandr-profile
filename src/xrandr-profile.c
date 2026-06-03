@@ -412,7 +412,7 @@ options_parse(Options *o, const int argc, char *argv[])
 			exit(0);
 
 		case OPT_VERSION:
-			puts("xrandr-profile-"VERSION"\n");
+			puts("xrandr-profile-"VERSION);
 			exit(0);
 
 		default:
