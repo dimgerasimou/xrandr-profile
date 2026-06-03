@@ -68,7 +68,8 @@ hook_name_cmp(const void *a, const void *b)
 
 /* Run every executable regular file in `dir`, in sorted order, each with
  * XRANDR_PROFILE and XRANDR_HOOK set in its environment. Missing dir is a
- * no-op (hooks are opt-in). */
+ * no-op (hooks are opt-in).
+ */
 static void
 run_hook_dir(const char *dir, const char *profile, const char *phase)
 {
@@ -95,6 +96,12 @@ run_hook_dir(const char *dir, const char *profile, const char *phase)
 		char        path[PATH_MAX];
 		struct stat st;
 
+		/* Daemon shutting down: skip the rest (still free the names). */
+		if (xr_stop_requested()) {
+			free(names[i]);
+			continue;
+		}
+
 		snprintf(path, sizeof(path), "%s/%s", dir, names[i]);
 
 		if (stat(path, &st) == 0 && S_ISREG(st.st_mode)
@@ -107,11 +114,28 @@ run_hook_dir(const char *dir, const char *profile, const char *phase)
 				execl(path, path, (char *)NULL);
 				_exit(127);
 			} else if (pid > 0) {
-				int status;
-				while (waitpid(pid, &status, 0) < 0 && errno == EINTR)
-					;
-				if (WIFEXITED(status) && WEXITSTATUS(status))
-					warn("hook \"%s\" exited with %d", names[i], WEXITSTATUS(status));
+				int status = 0;
+
+				for (;;) {
+					pid_t w = waitpid(pid, &status, 0);
+
+					if (w == pid)
+						break;                  /* reaped */
+					if (w < 0 && errno == EINTR) {
+						/* Stop signal: don't block on a slow
+						 * hook during shutdown; leave the child
+						 * to finish and be reaped by init. */
+						if (xr_stop_requested())
+							break;
+						continue;               /* benign interrupt */
+					}
+					break;                          /* genuine error */
+				}
+
+				if (!xr_stop_requested()
+				        && WIFEXITED(status) && WEXITSTATUS(status))
+					warn("hook \"%s\" exited with %d",
+					     names[i], WEXITSTATUS(status));
 			} else {
 				warn("fork:");
 			}

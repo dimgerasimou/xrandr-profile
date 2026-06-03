@@ -6,6 +6,8 @@
 #include <poll.h>
 #include <time.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
@@ -488,17 +490,24 @@ xr_apply_profile(const Profile *p)
 /*
  *  Hotplug watcher
  *
- *  Selects only RROutputChangeNotify, the precise hotplug signal,
- *  and acts only when an output's connection state actually flips.
- *  Mode/CRTC reconfiguration (including the events our own apply
- *  emits) leaves connection unchanged and is ignored, so there is no
- *  feedback loop. While idle we block in poll() forever: no wakeups
- *  until the server reports a real change.
+ *  Selects only RROutputChangeNotify, the precise hotplug signal, and acts
+ *  only when an output's connection state actually flips. Mode/CRTC
+ *  reconfiguration (including the events our own apply emits) leaves the
+ *  connection unchanged and is ignored, so there is no feedback loop.
+ *
+ *  Signals use the self-pipe technique: the handler writes one byte to a
+ *  pipe that poll() watches alongside the X connection. This closes the
+ *  race where a signal landing between the flag check and poll() would be
+ *  missed until the next X event -- and because the signals stay deliverable
+ *  rather than blocked, the same EINTR also lets a blocked waitpid() in a
+ *  hook bail out, so a slow hook cannot make the daemon ignore SIGTERM.
+ *  While idle, poll() blocks indefinitely: no wakeups, no CPU.
  */
 
 enum { TRACK_MAX = 64 };
 
 static int rr_event_base;
+static int sig_pipe[2] = { -1, -1 };
 
 static struct {
 	RROutput out;
@@ -520,12 +529,20 @@ now_ms(void)
 static void
 on_signal(int sig)
 {
+	char    b = 0;
+	ssize_t r;
+
 	if (sig == SIGHUP)
 		watch_force = 1;
 	else
 		watch_stop = 1;
+
+	/* Wake any blocked poll()/waitpid(); write() is async-signal-safe. */
+	r = write(sig_pipe[1], &b, 1);
+	(void)r;
 }
 
+/* Returns 1 if this output's connection state changed (or is new). */
 static int
 track_update(RROutput out, int conn)
 {
@@ -569,6 +586,12 @@ track_init(void)
 	XRRFreeScreenResources(r);
 }
 
+int
+xr_stop_requested(void)
+{
+	return watch_stop;
+}
+
 void
 xr_watch_init(void)
 {
@@ -578,14 +601,24 @@ xr_watch_init(void)
 	if (!XRRQueryExtension(dpy, &rr_event_base, &error_base))
 		die("RandR extension not available");
 
+	if (pipe(sig_pipe) != 0)
+		die("pipe:");
+	for (int i = 0; i < 2; i++) {
+		fcntl(sig_pipe[i], F_SETFL, O_NONBLOCK);  /* handler never blocks  */
+		fcntl(sig_pipe[i], F_SETFD, FD_CLOEXEC);  /* hooks don't inherit it */
+	}
+
 	track_init();
 
 	XRRSelectInput(dpy, DefaultRootWindow(dpy), RROutputChangeNotifyMask);
 	XFlush(dpy);
 
+	/* No SA_RESTART: poll()/waitpid() must see EINTR. Signals stay
+	 * deliverable (not blocked) so the self-pipe wakes us every time.
+	 */
 	sa.sa_handler = on_signal;
 	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;	/* no SA_RESTART: poll() must see EINTR */
+	sa.sa_flags = 0;
 	sigaction(SIGINT,  &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
 	sigaction(SIGHUP,  &sa, NULL);
@@ -594,14 +627,14 @@ xr_watch_init(void)
 XrEvent
 xr_wait_for_change(int debounce_ms)
 {
-	int     fd       = ConnectionNumber(dpy);
+	int     xfd      = ConnectionNumber(dpy);
 	int     dirty    = 0;
 	int64_t deadline = 0;
 
 	for (;;) {
-		/* Drain Xlib's queue fully before blocking, so poll() is
-		 * only ever woken by genuinely new data on the socket.
-		 */
+		char buf[64];
+
+		/* Drain X events; flip dirty only on real connection changes. */
 		while (XPending(dpy)) {
 			XEvent ev;
 			XRRNotifyEvent *ne;
@@ -623,6 +656,10 @@ xr_wait_for_change(int debounce_ms)
 			}
 		}
 
+		/* Drain self-pipe wakeups; the flags below carry the state. */
+		while (read(sig_pipe[0], buf, sizeof(buf)) > 0)
+			continue;
+
 		if (watch_stop)
 			return XR_INTERRUPTED;
 
@@ -640,8 +677,11 @@ xr_wait_for_change(int debounce_ms)
 			timeout = (int)rem;
 		}
 
-		struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
-		if (poll(&pfd, 1, timeout) < 0 && errno != EINTR)
+		struct pollfd pfd[2] = {
+			{ .fd = xfd,         .events = POLLIN, .revents = 0 },
+			{ .fd = sig_pipe[0], .events = POLLIN, .revents = 0 },
+		};
+		if (poll(pfd, 2, timeout) < 0 && errno != EINTR)
 			die("poll:");
 	}
 }
