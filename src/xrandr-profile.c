@@ -63,9 +63,9 @@ typedef struct {
 static int  hook_name_cmp(const void *a, const void *b);
 static void run_hook_dir(const char *dir, const char *profile, const char *phase);
 static void run_hooks(const char *profile, const char *phase);
-static int action_save(Options *opt);
+static int action_save(const Options *opt);
 static int action_apply(const char *name);
-static int action_delete(Options *opt);
+static int action_delete(const Options *opt);
 static void action_list(const unsigned int names_only);
 static void action_list_all(const unsigned int names_only);
 static void action_list_current(void);
@@ -180,7 +180,7 @@ run_hooks(const char *profile, const char *phase)
 }
 
 static int
-action_save(Options *opt)
+action_save(const Options *opt)
 {
 	ProfileList *pl;
 	Profile     *cur;
@@ -246,7 +246,7 @@ out:
 }
 
 static int
-action_delete(Options *opt)
+action_delete(const Options *opt)
 {
 	ProfileList *pl;
 	int          ret = 0;

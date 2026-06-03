@@ -41,18 +41,18 @@ static struct {
 } track[TRACK_MAX];
 
 static double   refresh_rate(const XRRModeInfo *m);
-static uint64_t fnv1a(const void *data, size_t len);
+static uint64_t fnv1a(const void *data, const size_t len);
 static int64_t  now_ms(void);
 static int      get_edid(const RROutput output, Monitor *m);
-static void     get_transform(RRCrtc crtc, Monitor *m);
-static RRMode   find_mode(XRRScreenResources *r, XRROutputInfo *info, uint16_t w, uint16_t h, double rate);
-static RRCrtc   find_crtc(XRROutputInfo *info, const RRCrtc *used, int nused);
-static int      build_output_cache(XRRScreenResources *r, OutCache *cache, int max);
+static void     get_transform(const RRCrtc crtc, Monitor *m);
+static RRMode   find_mode(const XRRScreenResources *r, const XRROutputInfo *info, const uint16_t w, const uint16_t h, const double rate);
+static RRCrtc   find_crtc(const XRROutputInfo *info, const RRCrtc *used, const int nused);
+static int      build_output_cache(XRRScreenResources *r, OutCache *cache, const int max);
 static void     disable_all_crtcs(XRRScreenResources *r);
 static void     compute_framebuffer(const Profile *p, int *out_w, int *out_h);
-static RROutput apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache, int ncache, RRCrtc *used, int *nused, int maxused);
-static void     on_signal(int sig);
-static int      track_update(RROutput out, int conn);
+static RROutput apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache, const int ncache, RRCrtc *used, int *nused, const int maxused);
+static void     on_signal(const int sig);
+static int      track_update(const RROutput out, const int conn);
 static void     track_init(void);
 
 static double
@@ -72,7 +72,7 @@ refresh_rate(const XRRModeInfo *m)
 }
 
 static uint64_t
-fnv1a(const void *data, size_t len)
+fnv1a(const void *data, const size_t len)
 {
 	const uint8_t *p = data;
 	uint64_t h = 14695981039346656037ULL;
@@ -145,7 +145,7 @@ get_edid(const RROutput output, Monitor *m)
 }
 
 static void
-get_transform(RRCrtc crtc, Monitor *m)
+get_transform(const RRCrtc crtc, Monitor *m)
 {
 	XRRCrtcTransformAttributes *ta;
 
@@ -172,8 +172,8 @@ done:
 }
 
 static RRMode
-find_mode(XRRScreenResources *r, XRROutputInfo *info,
-          uint16_t w, uint16_t h, double rate)
+find_mode(const XRRScreenResources *r, const XRROutputInfo *info,
+          const uint16_t w, const uint16_t h, const double rate)
 {
 	RRMode best      = None;
 	double best_diff = 1e9;
@@ -199,7 +199,7 @@ find_mode(XRRScreenResources *r, XRROutputInfo *info,
 }
  
 static RRCrtc
-find_crtc(XRROutputInfo *info, const RRCrtc *used, int nused)
+find_crtc(const XRROutputInfo *info, const RRCrtc *used, const int nused)
 {
 	for (int i = 0; i < info->ncrtc; i++) {
 		RRCrtc crtc  = info->crtcs[i];
@@ -216,7 +216,7 @@ find_crtc(XRROutputInfo *info, const RRCrtc *used, int nused)
 }
 
 static int
-build_output_cache(XRRScreenResources *r, OutCache *cache, int max)
+build_output_cache(XRRScreenResources *r, OutCache *cache, const int max)
 {
 	int n = 0;
 
@@ -298,7 +298,7 @@ compute_framebuffer(const Profile *p, int *out_w, int *out_h)
 
 static RROutput
 apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
-              int ncache, RRCrtc *used, int *nused, int maxused)
+              const int ncache, RRCrtc *used, int *nused, const int maxused)
 {
 	XRROutputInfo *info   = NULL;
 	RROutput       output = None;
@@ -372,7 +372,7 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 }
 
 static void
-on_signal(int sig)
+on_signal(const int sig)
 {
 	char    b = 0;
 	ssize_t r;
@@ -389,7 +389,7 @@ on_signal(int sig)
 
 /* Returns 1 if this output's connection state changed (or is new). */
 static int
-track_update(RROutput out, int conn)
+track_update(const RROutput out, const int conn)
 {
 	for (int i = 0; i < ntrack; i++) {
 		if (track[i].out != out)
@@ -630,7 +630,7 @@ xr_watch_init(void)
 }
 
 XrEvent
-xr_wait_for_change(int debounce_ms)
+xr_wait_for_change(const int debounce_ms)
 {
 	int     xfd      = ConnectionNumber(dpy);
 	int     dirty    = 0;

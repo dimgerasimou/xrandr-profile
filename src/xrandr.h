@@ -17,7 +17,7 @@ Profile *xr_active_profile(void);
 void     xr_apply_profile(const Profile *p);
 
 void     xr_watch_init(void);
-XrEvent  xr_wait_for_change(int debounce_ms);
+XrEvent  xr_wait_for_change(const int debounce_ms);
 int      xr_stop_requested(void);
 
 #endif /* XRANDR_H */

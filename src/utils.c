@@ -73,7 +73,7 @@ argerr(const char *fmt, ...)
 }
 
 void *
-ecalloc(size_t nmemb, size_t size)
+ecalloc(const size_t nmemb, const size_t size)
 {
 	void *p;
 
@@ -83,7 +83,7 @@ ecalloc(size_t nmemb, size_t size)
 }
 
 void *
-emalloc(size_t size)
+emalloc(const size_t size)
 {
 	void *p;
 
@@ -93,7 +93,7 @@ emalloc(size_t size)
 }
 
 void *
-erealloc(void *ptr, size_t size)
+erealloc(void *ptr, const size_t size)
 {
 	void *p;
 

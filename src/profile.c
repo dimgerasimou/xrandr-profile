@@ -16,8 +16,8 @@
 #include "profile.h"
 #include "utils.h"
 
-static const char *rotation_name(uint8_t rotation);
-static const char *reflection_name (uint8_t rotation);
+static const char *rotation_name(const uint8_t rotation);
+static const char *reflection_name (const uint8_t rotation);
 static       int   make_directory(const char *path);
 static       void  config_path(char *buf, const size_t bufsz);
 static       int   parse_u8(const char *s, uint8_t *out);
@@ -29,7 +29,7 @@ static       int   report_malformed_line(const char *key, const char *val);
 static       int   parse_monitor_line(const char *line, Monitor *m);
 
 static const char *
-rotation_name(uint8_t rotation)
+rotation_name(const uint8_t rotation)
 {
 	switch (rotation & (RR_Rotate_0 | RR_Rotate_90 | RR_Rotate_180 | RR_Rotate_270)) {
 	case RR_Rotate_0:
@@ -45,7 +45,7 @@ rotation_name(uint8_t rotation)
 }
 
 static const char *
-reflection_name (uint8_t rotation)
+reflection_name (const uint8_t rotation)
 {
 	switch (rotation & (RR_Reflect_X | RR_Reflect_Y)) {
 	case 0:
