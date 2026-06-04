@@ -383,9 +383,13 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 		return None;
 	}
 
-	/* Always set panning so a stale rectangle left on a reused CRTC by a
-	 * previously applied profile cannot survive; a zero rectangle clears it. */
-	{
+	/* Only touch panning when the profile actually specifies one. Calling
+	 * XRRSetPanning with a zero rectangle is NOT a harmless "clear": with a
+	 * panning area of 0x0 the server clamps the CRTC origin into that
+	 * degenerate rect and pins it to (0,0), silently undoing the position
+	 * just set by XRRSetCrtcConfig. To clear a genuinely stale rectangle,
+	 * pass the CRTC's mode geometry at its position -- never zeros. */
+	if (m->pan_w && m->pan_h) {
 		XRRPanning pan = {0};
 		pan.timestamp = CurrentTime;
 		pan.left   = (unsigned int)m->pan_x;
@@ -587,18 +591,12 @@ xr_apply_profile(const Profile *p)
 	disable_all_crtcs(r);
 	compute_framebuffer(p, &new_w, &new_h);
 
-	/* Clamp to the driver's advertised range; an out-of-range request
-	 * raises BadValue, which (even with the error handler) leaves the
-	 * framebuffer untouched -- clamping keeps the apply useful instead. */
-	int minw = 0, minh = 0, maxw = 0, maxh = 0;
-	if (XRRGetScreenSizeRange(dpy, root, &minw, &minh, &maxw, &maxh)) {
-		if (new_w < minw) new_w = minw;
-		if (new_h < minh) new_h = minh;
-		if (maxw && new_w > maxw) new_w = maxw;
-		if (maxh && new_h > maxh) new_h = maxh;
-	}
-
-	/* The mm size is only a DPI hint. Use the conventional 96 dpi rather
+	/* No clamp to the advertised max: silently shrinking the framebuffer to
+	 * fit the range turns an oversized layout into a misplaced one with no
+	 * error. Pass the true size; if the driver genuinely can't honor it,
+	 * XRRSetScreenSize fails loudly through the error handler instead.
+	 *
+	 * The mm size is only a DPI hint. Use the conventional 96 dpi rather
 	 * than deriving it from the pre-resize screen, which would be stale. */
 	int mm_w = (int)((double)new_w * 25.4 / 96.0 + 0.5);
 	int mm_h = (int)((double)new_h * 25.4 / 96.0 + 0.5);
