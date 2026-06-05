@@ -246,7 +246,10 @@ build_output_cache(XRRScreenResources *r, OutCache *cache, const int max)
 		}
 
 		Monitor tmp = {0};
-		get_edid(r->outputs[j], &tmp);
+		if (get_edid(r->outputs[j], &tmp) < 0) {
+			XRRFreeOutputInfo(oi);
+			continue; /* EDID not ready yet; a follow-up event will retry */
+		}
 
 		cache[n].output = r->outputs[j];
 		cache[n].info   = oi;
