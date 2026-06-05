@@ -10,10 +10,18 @@ typedef enum {
 	XR_INTERRUPTED,
 } XrEvent;
 
+typedef enum {
+	XR_FALLBACK_OFF,
+	XR_FALLBACK_HORIZONTAL,
+	XR_FALLBACK_VERTICAL,
+	XR_FALLBACK_CLONE,
+} XrFallback;
+
 void     xr_init(void);
 void     xr_free(void);
 
 Profile *xr_active_profile(void);
+Profile *xr_fallback_profile(XrFallback mode);
 void     xr_apply_profile(const Profile *p);
 
 void     xr_watch_init(void);

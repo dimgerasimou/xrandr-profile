@@ -571,6 +571,140 @@ xr_active_profile(void)
 	return p;
 }
 
+Profile *
+xr_fallback_profile(XrFallback mode)
+{
+	enum { MAXCAND = 64 };
+	struct cand {
+		char     name[64];
+		Edid     edid;
+		uint16_t w, h;
+		double   rate;
+	} cand[MAXCAND];
+	int                 n = 0;
+	XRRScreenResources *r;
+	Window              root = DefaultRootWindow(dpy);
+
+	if (mode == XR_FALLBACK_OFF)
+		return NULL;
+
+	r = XRRGetScreenResourcesCurrent(dpy, root);
+	if (!r)
+		return NULL;
+
+	for (int i = 0; i < r->noutput && n < MAXCAND; i++) {
+		XRROutputInfo *info = XRRGetOutputInfo(dpy, r, r->outputs[i]);
+		if (!info)
+			continue;
+		if (info->connection != RR_Connected || info->nmode == 0) {
+			XRRFreeOutputInfo(info);
+			continue;
+		}
+
+		/* Preferred mode is the first entry of the output's mode list. */
+		RRMode   want = info->modes[0];
+		uint16_t mw = 0, mh = 0;
+		double   mr = 0.0;
+		for (int j = 0; j < r->nmode; j++) {
+			if (r->modes[j].id != want)
+				continue;
+			mw = (uint16_t)r->modes[j].width;
+			mh = (uint16_t)r->modes[j].height;
+			mr = refresh_rate(&r->modes[j]);
+			break;
+		}
+		if (!mw || !mh) {
+			XRRFreeOutputInfo(info);
+			continue;
+		}
+
+		Monitor tmp = {0};
+		get_edid(r->outputs[i], &tmp);
+
+		snprintf(cand[n].name, sizeof(cand[n].name), "%.*s",
+		         (int)sizeof(cand[n].name) - 1, info->name);
+		cand[n].edid = tmp.edid;
+		cand[n].w    = mw;
+		cand[n].h    = mh;
+		cand[n].rate = mr;
+		n++;
+
+		XRRFreeOutputInfo(info);
+	}
+
+	XRRFreeScreenResources(r);
+
+	if (n == 0)
+		return NULL;
+
+	/* Stable order by output name (small n: insertion sort). */
+	for (int i = 1; i < n; i++) {
+		struct cand key = cand[i];
+		int j = i - 1;
+		while (j >= 0 && strcmp(cand[j].name, key.name) > 0) {
+			cand[j + 1] = cand[j];
+			j--;
+		}
+		cand[j + 1] = key;
+	}
+
+	/* Primary and clone target: the largest-area output. */
+	int primary = 0;
+	for (int i = 1; i < n; i++)
+		if ((long)cand[i].w * cand[i].h > (long)cand[primary].w * cand[primary].h)
+			primary = i;
+
+	uint16_t tw = cand[primary].w;
+	uint16_t th = cand[primary].h;
+
+	Profile *p = profile_create("fallback");
+	int x = 0, y = 0;
+
+	for (int i = 0; i < n; i++) {
+		profile_append(p);
+		Monitor *m = &p->m[p->len - 1];
+
+		snprintf(m->output, sizeof(m->output), "%.*s",
+		         (int)sizeof(m->output) - 1, cand[i].name);
+		m->edid     = cand[i].edid;
+		m->enabled  = 1;
+		m->primary  = (uint8_t)(i == primary);
+		m->rotation = RR_Rotate_0;
+		m->w        = cand[i].w;
+		m->h        = cand[i].h;
+		m->rate     = cand[i].rate;
+
+		switch (mode) {
+		case XR_FALLBACK_VERTICAL:
+			m->x = 0;
+			m->y = y;
+			y += cand[i].h;
+			break;
+		case XR_FALLBACK_CLONE:
+			/* All outputs cover the same target rect at the origin;
+			 * smaller ones are scaled up to fill it via a transform
+			 * (footprint = native * target/native = target). */
+			m->x = 0;
+			m->y = 0;
+			if (cand[i].w != tw || cand[i].h != th) {
+				m->has_transform   = 1;
+				m->transform[0][0] = (double)tw / cand[i].w;
+				m->transform[1][1] = (double)th / cand[i].h;
+				m->transform[2][2] = 1.0;
+			}
+			break;
+		case XR_FALLBACK_HORIZONTAL:
+		default:
+			m->x = x;
+			m->y = 0;
+			x += cand[i].w;
+			break;
+		}
+	}
+
+	return p;
+}
+
 void
 xr_apply_profile(const Profile *p)
 {

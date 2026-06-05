@@ -13,6 +13,8 @@ xrandr-profile \- save and restore XRandR display profiles
 .RB [ \-\-list-all ]
 .RB [ \-\-list-current ]
 .RB [ \-\-watch ]
+.RB [ \-\-fallback
+.IR mode ]
 .RB [ \-\-names ]
 .RB [ \-\-version ]
 .RB [ \-\-help ]
@@ -76,6 +78,17 @@ Print the current active display configuration.
 Applies the matching profile automatically when monitors are connected or disconnected.
 
 .TP
+.BI \-\-fallback " mode"
+When no saved profile matches the connected monitors, arrange them
+automatically.
+.I mode
+is one of
+.BR horizontal ","
+.BR vertical ","
+.BR clone " or"
+.BR off " (default)."
+
+.TP
 .B \-\-names
 Print only the name of the profiles.
 
@@ -125,6 +138,14 @@ The phase of the execution. Will be either
 or
 .BR post .
 
+.PP
+The synthesized layout produced by
+.B \-\-fallback
+runs hooks under the profile name
+.BR fallback ,
+so per-profile hooks for it live in
+.IR hooks/fallback/pre/ " and " hooks/fallback/post/ .
+
 .SH FILES
 
 .TP
@@ -172,6 +193,10 @@ Automatically restore the last matching profile:
 .TP
 Watch for hotplug changes and auto-apply:
 .B xrandr-profile --watch &
+
+.TP
+Auto-apply, falling back to a left-to-right layout for unknown monitor sets:
+.B xrandr-profile --watch --fallback=horizontal &
 
 .SH SEE ALSO
 .BR xrandr (1),

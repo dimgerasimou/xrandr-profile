@@ -1,6 +1,6 @@
 # xrandr-profile
 
-A lightweight **XRandR** profile manager. Saves and restores display configurations based on connected hardware, with automatic profile matching via EDID.
+A lightweight, feature rich **XRandR** profile manager. Saves and restores display configurations based on connected hardware, with automatic profile matching via EDID.
 Useful when you frequently switch between setups or power profiles, thus changing the output names and want your layout restored without heavy, complex and
 difficult to maintain `XRandR` scripts.
 
@@ -33,6 +33,7 @@ xrandr-profile --list-all         # print all saved profiles
 xrandr-profile --list-current     # print current active layout
 xrandr-profile --delete work      # delete saved profile "work"
 xrandr-profile --watch            # daemon: auto-apply on monitor hotplug
+xrandr-profile --watch --fallback=horizontal  # daemon + auto-arrange unknown monitor sets
 xrandr-profile                    # auto-match and apply last used matching profile
 
 xrandr-profile --list --names | fzf | xargs xrandr-profile --load # select with fzf profile to load
@@ -45,6 +46,7 @@ xrandr-profile --list --names | fzf | xargs xrandr-profile --load # select with 
 - **Automatic profile application**: Run without arguments to auto-apply the last used matching profile
 - **XDG-compliant storage**: Profiles stored at `$XDG_CONFIG_HOME/xrandr-profile/profiles` (defaults to `~/.config/xrandr-profile/profiles`)
 - **Hotplug watcher**: Applies the matching profile automatically when monitors are connected or disconnected.
+- **Fallback layouts**: With `--fallback=horizontal|vertical|clone`, unknown monitor sets are arranged automatically instead of being left untouched (`off` by default).
 - **Hooks**: Supports executing global and per profile hooks.
 
 ## Running automatically
@@ -60,6 +62,22 @@ xrandr-profile --watch &
 
 Send `SIGHUP` (`pkill -HUP xrandr-profile`) to force an immediate re-apply —
 handy right after saving a new profile.
+
+When you plug in a monitor combination you've never saved, `--watch` normally
+leaves the layout alone. Add `--fallback=MODE` to have it arrange the
+connected outputs automatically instead:
+
+```sh
+xrandr-profile --watch --fallback=horizontal &
+```
+
+`horizontal` places outputs left to right at each output's preferred mode,
+`vertical` stacks them top to bottom, and `clone` mirrors every output onto
+the largest one (scaling smaller outputs to fit). Outputs are ordered by name
+so the result is deterministic, and the largest output becomes primary. A
+matching saved profile always takes priority, the fallback only fires on a
+no-match, and never overrides an explicit `--load`. Its hooks run under the
+profile name `fallback`.
 
 ## Hooks
 

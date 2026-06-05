@@ -50,6 +50,7 @@ enum {
 	OPT_LIST_CURRENT,
 	OPT_WATCH,
 	OPT_NAMES,
+	OPT_FALLBACK,
 	OPT_VERSION,
 	OPT_HELP,
 };
@@ -58,19 +59,21 @@ typedef struct {
 	Action a;
 	const char *name;
 	unsigned int names_only;
+	XrFallback fallback;
 } Options;
 
 static int  hook_name_cmp(const void *a, const void *b);
 static void run_hook_dir(const char *dir, const char *profile, const char *phase);
 static void run_hooks(const char *profile, const char *phase);
 static int action_save(const Options *opt);
-static int action_apply(const char *name);
+static int action_apply(const char *name, XrFallback fallback);
 static int action_delete(const Options *opt);
 static void action_list(const unsigned int names_only);
 static void action_list_all(const unsigned int names_only);
 static void action_list_current(void);
-static int action_watch(void);
+static int action_watch(XrFallback fallback);
 static void usage(void);
+static int  parse_fallback(const char *s, XrFallback *out);
 static int  options_parse(Options *o, const int argc, char *argv[]);
 
 static int
@@ -202,7 +205,7 @@ action_save(const Options *opt)
 }
 
 static int
-action_apply(const char *name)
+action_apply(const char *name, XrFallback fallback)
 {
 	ProfileList *pl;
 	Profile     *cur;
@@ -237,6 +240,16 @@ action_apply(const char *name)
 	if (name) {
 		warn("no matching profile named \"%s\"", name);
 		ret = -1;
+	} else if (fallback != XR_FALLBACK_OFF) {
+		Profile *fb = xr_fallback_profile(fallback);
+
+		if (fb) {
+			warn("no saved profile matched; applying fallback layout");
+			run_hooks(fb->name, "pre");
+			xr_apply_profile(fb);
+			run_hooks(fb->name, "post");
+			profile_free(fb);
+		}
 	}
 
 out:
@@ -304,15 +317,15 @@ action_list_current(void)
 }
 
 static int
-action_watch(void)
+action_watch(XrFallback fallback)
 {
 	enum { DEBOUNCE_MS = 300 };
 
 	xr_watch_init();
-	action_apply(NULL);
+	action_apply(NULL, fallback);
 
 	while (xr_wait_for_change(DEBOUNCE_MS) == XR_CHANGED)
-		action_apply(NULL);
+		action_apply(NULL, fallback);
 
 	return 0;
 }
@@ -325,7 +338,7 @@ usage(void)
 	      "\t\t[--help][--version]\n"
 	      "\t\t[--load profile][--save profile][--delete profile]\n"
 	      "\t\t[--list][--list-all][--list-current][--names]\n"
-	      "\t\t[--watch]\n"
+	      "\t\t[--watch][--fallback=horizontal|vertical|clone|off]\n"
 	      "\n"
 	      "--help              Print this message and exit\n"
 	      "--version           Print version and exit\n"
@@ -336,7 +349,26 @@ usage(void)
 	      "--list-all          List all profiles\n"
 	      "--list-current      List current profile properties\n"
 	      "--watch             Watch for hotplug changes and auto-apply\n"
-	      "--names             Print only the profile names\n");
+	      "--names             Print only the profile names\n"
+	      "--fallback=MODE     When no saved profile matches, arrange them automatically.\n"
+	      "                      MODE is one of horizontal, vertical, clone, or off\n"
+	      "                      (default: off)\n");
+}
+
+static int
+parse_fallback(const char *s, XrFallback *out)
+{
+	if (!strcmp(s, "off"))
+		*out = XR_FALLBACK_OFF;
+	else if (!strcmp(s, "horizontal"))
+		*out = XR_FALLBACK_HORIZONTAL;
+	else if (!strcmp(s, "vertical"))
+		*out = XR_FALLBACK_VERTICAL;
+	else if (!strcmp(s, "clone"))
+		*out = XR_FALLBACK_CLONE;
+	else
+		return -1;
+	return 0;
 }
 
 static int
@@ -347,6 +379,7 @@ options_parse(Options *o, const int argc, char *argv[])
 	o->name = NULL;
 	o->a = AUTO;
 	o->names_only = 0;
+	o->fallback = XR_FALLBACK_OFF;
 
 	struct option longopts[] = {
 		{ "save",         required_argument, 0, OPT_SAVE         },
@@ -357,6 +390,7 @@ options_parse(Options *o, const int argc, char *argv[])
 		{ "list-all",     no_argument,       0, OPT_LIST_ALL     },
 		{ "list-current", no_argument,       0, OPT_LIST_CURRENT },
 		{ "watch",        no_argument,       0, OPT_WATCH        },
+		{ "fallback",     required_argument, 0, OPT_FALLBACK     },
 		{ "help",         no_argument,       0, OPT_HELP         },
 		{ "version",      no_argument,       0, OPT_VERSION      },
 		{ 0,              0,                 0, 0                },
@@ -407,6 +441,11 @@ options_parse(Options *o, const int argc, char *argv[])
 			o->names_only = 1;
 			break;
 
+		case OPT_FALLBACK:
+			if (parse_fallback(optarg, &o->fallback) < 0)
+				argerr("--fallback must be one of: horizontal, vertical, clone, off");
+			break;
+
 		case OPT_HELP:
 			usage();
 			exit(0);
@@ -441,7 +480,7 @@ main (int argc, char *argv[])
 
 	switch (opt.a) {
 	case AUTO:
-		if (action_apply(NULL))
+		if (action_apply(NULL, opt.fallback))
 			ret = 1;
 		break;
 
@@ -451,7 +490,7 @@ main (int argc, char *argv[])
 		break;
 
 	case LOAD:
-		if (action_apply(opt.name))
+		if (action_apply(opt.name, opt.fallback))
 			ret = 1;
 		break;
 
@@ -473,7 +512,7 @@ main (int argc, char *argv[])
 		break;
 
 	case WATCH:
-		if (action_watch())
+		if (action_watch(opt.fallback))
 			ret = 1;
 		break;
 	}
