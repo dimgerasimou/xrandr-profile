@@ -22,6 +22,9 @@ endif
 
 PREFIX    ?= /usr/local
 MANPREFIX ?= ${PREFIX}/share/man
+BASHCOMPDIR ?= ${PREFIX}/share/bash-completion/completions
+ZSHCOMPDIR  ?= ${PREFIX}/share/zsh/site-functions
+FISHCOMPDIR ?= ${PREFIX}/share/fish/vendor_completions.d
 
 SRCDIR    := src
 BUILDDIR  := build
@@ -88,10 +91,15 @@ install: $(TARGET)
 	@install -m 755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(BIN)
 	@sed "s/VERSION/$(VERSION)/g" < $(DOCDIR)/$(BIN).1 > $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
 	@chmod 644 $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
+	@install -Dm644 completions/$(BIN).bash $(DESTDIR)$(BASHCOMPDIR)/$(BIN)
+	@install -Dm644 completions/_$(BIN)     $(DESTDIR)$(ZSHCOMPDIR)/_$(BIN)
+	@install -Dm644 completions/$(BIN).fish $(DESTDIR)$(FISHCOMPDIR)/$(BIN).fish
 
 uninstall:
 	@$(PRINTF) "$(COLOR_CYAN)Uninstalling $(BIN) from:$(COLOR_RESET) %s\n" "$(DESTDIR)$(PREFIX)/bin/$(BIN)"
 	@rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN) $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
+	@rm -f $(DESTDIR)$(BASHCOMPDIR)/$(BIN) $(DESTDIR)$(ZSHCOMPDIR)/_$(BIN) \
+	       $(DESTDIR)$(FISHCOMPDIR)/$(BIN).fish
 
 test: | $(OBJDIR)
 	@mkdir -p $(TESTDIR)
