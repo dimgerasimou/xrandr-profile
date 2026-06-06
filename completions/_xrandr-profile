@@ -19,6 +19,8 @@ _xrandr_profile()
 		'--watch[watch for hotplug changes and auto-apply]' \
 		'--fallback=[auto-arrange unknown monitor sets]:mode:(horizontal vertical clone off)' \
 		'--force[force apply profile]' \
+		'--verbose[log actions to stderr]' \
+		'--dry-run[run without applying anything]' \
 		'--names[print only the profile names]'
 
 	if [[ $state == profiles ]]; then

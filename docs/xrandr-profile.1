@@ -16,6 +16,8 @@ xrandr-profile \- save and restore XRandR display profiles
 .RB [ \-\-fallback
 .IR mode ]
 .RB [ \-\-force ]
+.RB [ \-\-verbose ]
+.RB [ \-\-dry\-run ]
 .RB [ \-\-names ]
 .RB [ \-\-version ]
 .RB [ \-\-help ]
@@ -99,6 +101,15 @@ is one of
 .TP
 .B \-\-force
 Re-apply the matching profile even when the current layout already matches it.
+
+.TP
+.B \-\-verbose
+Log what is being done to standard error.
+
+.TP
+.B \-\-dry\-run
+Show what would change without applying anything. Implies
+.BR \-\-verbose .
 
 .TP
 .B \-\-names

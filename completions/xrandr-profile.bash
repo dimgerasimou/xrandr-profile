@@ -34,7 +34,8 @@ _xrandr_profile()
 
 	if [[ $cur == -* ]]; then
 		COMPREPLY=( $(compgen -W '--save --load --delete --list --list-all
-			--list-current --watch --fallback --force --names --version --help' \
+			--list-current --watch --fallback --force --verbose --dry-run
+			--names --version --help' \
 			-- "$cur") )
 	fi
 }

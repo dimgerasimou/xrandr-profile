@@ -7,6 +7,9 @@
 
 #include "utils.h"
 
+int verbose = 0;
+int dry_run = 0;
+
 static const char *program_name;
 
 void
@@ -38,6 +41,20 @@ die(const char *fmt, ...)
 	fputc('\n', stderr);
 
 	exit(1);
+}
+
+void
+vinfo(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (!verbose)
+		return;
+
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	fputc('\n', stderr);
 }
 
 void

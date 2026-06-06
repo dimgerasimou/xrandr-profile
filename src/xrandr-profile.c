@@ -52,6 +52,8 @@ enum {
 	OPT_NAMES,
 	OPT_FALLBACK,
 	OPT_FORCE,
+	OPT_VERBOSE,
+	OPT_DRY_RUN,
 	OPT_VERSION,
 	OPT_HELP,
 };
@@ -61,6 +63,8 @@ typedef struct {
 	const char *name;
 	unsigned int names_only;
 	unsigned int force;
+	unsigned int verbose;
+	unsigned int dry_run;
 	XrFallback fallback;
 } Options;
 
@@ -199,7 +203,9 @@ action_save(const Options *opt)
 	profile_list_delete(pl, opt->name);
 	profile_list_prepend(pl,cur);
 
-	if (profile_list_write(pl))
+	vinfo("saving profile \"%s\"%s", opt->name, dry_run ? " (dry-run)" : "");
+
+	if (!dry_run && profile_list_write(pl))
 		ret = -1;
 
 	profile_list_free(pl);
@@ -224,21 +230,31 @@ action_apply(const char *name, XrFallback fallback, const unsigned int force)
 
 		Profile *sel = pl->p[i];
 
-		if (!force && profile_layout_equal(sel, cur))
+		if (!force && profile_layout_equal(sel, cur)) {
+			vinfo("profile \"%s\" already applied; nothing to do", sel->name);
 			goto out;
+		}
 
-		run_hooks(sel->name, "pre");
+		vinfo("applying profile \"%s\"%s", sel->name, dry_run ? " (dry-run)" : "");
+
+		if (!dry_run)
+			run_hooks(sel->name, "pre");
+
 		xr_apply_profile(sel);
-		run_hooks(sel->name, "post");
+
+		if (!dry_run)
+			run_hooks(sel->name, "post");
 
 		if (i == 0)
 			goto out;
 
-		memmove(&pl->p[1], &pl->p[0], i * sizeof(Profile *));
-		pl->p[0] = sel;
+		if (!dry_run) {
+			memmove(&pl->p[1], &pl->p[0], i * sizeof(Profile *));
+			pl->p[0] = sel;
 
-		if (profile_list_write(pl))
-			ret = -1;
+			if (profile_list_write(pl))
+				ret = -1;
+		}
 		goto out;
 	}
 
@@ -250,9 +266,15 @@ action_apply(const char *name, XrFallback fallback, const unsigned int force)
 
 		if (fb) {
 			warn("no saved profile matched; applying fallback layout");
-			run_hooks(fb->name, "pre");
+
+			if (!dry_run)
+				run_hooks(fb->name, "pre");
+
 			xr_apply_profile(fb);
-			run_hooks(fb->name, "post");
+
+			if (!dry_run)
+				run_hooks(fb->name, "post");
+
 			profile_free(fb);
 		}
 	}
@@ -271,9 +293,11 @@ action_delete(const Options *opt)
 
 	pl  = profile_list_read();
 
+	vinfo("deleting profile \"%s\"%s", opt->name, dry_run ? " (dry-run)" : "");
+
 	profile_list_delete(pl, opt->name);
 
-	if (profile_list_write(pl))
+	if (!dry_run && profile_list_write(pl))
 		ret = -1;
 
 	profile_list_free(pl);
@@ -343,7 +367,7 @@ usage(void)
 	      "\t\t[--help][--version]\n"
 	      "\t\t[--load profile][--save profile][--delete profile]\n"
 	      "\t\t[--list][--list-all][--list-current][--names]\n"
-	      "\t\t[--watch][--fallback=horizontal|vertical|clone|off][--force]\n"
+	      "\t\t[--watch][--fallback=horizontal|vertical|clone|off][--force][--verbose][--dry-run]\n"
 	      "\n"
 	      "--help              Print this message and exit\n"
 	      "--version           Print version and exit\n"
@@ -359,7 +383,9 @@ usage(void)
 	      "                    connected outputs automatically. MODE is one\n"
 	      "                    of horizontal, vertical, clone, or off\n"
 	      "                    (default: off)\n"
-	      "--force             Re-apply even if the profile is already active\n");
+	      "--force             Re-apply even if the profile is already active\n"
+	      "--verbose           Log what is being done to stderr\n"
+	      "--dry-run           Show what would change without doing anything\n");
 }
 
 static int
@@ -387,6 +413,8 @@ options_parse(Options *o, const int argc, char *argv[])
 	o->a = AUTO;
 	o->names_only = 0;
 	o->force = 0;
+	o->verbose = 0;
+	o->dry_run = 0;
 	o->fallback = XR_FALLBACK_OFF;
 
 	struct option longopts[] = {
@@ -400,6 +428,8 @@ options_parse(Options *o, const int argc, char *argv[])
 		{ "watch",        no_argument,       0, OPT_WATCH        },
 		{ "fallback",     required_argument, 0, OPT_FALLBACK     },
 		{ "force",        no_argument,       0, OPT_FORCE        },
+		{ "verbose",      no_argument,       0, OPT_VERBOSE      },
+		{ "dry-run",      no_argument,       0, OPT_DRY_RUN      },
 		{ "help",         no_argument,       0, OPT_HELP         },
 		{ "version",      no_argument,       0, OPT_VERSION      },
 		{ 0,              0,                 0, 0                },
@@ -459,6 +489,14 @@ options_parse(Options *o, const int argc, char *argv[])
 			o->force = 1;
 			break;
 
+		case OPT_VERBOSE:
+			o->verbose = 1;
+			break;
+
+		case OPT_DRY_RUN:
+			o->dry_run = 1;
+			break;
+
 		case OPT_HELP:
 			usage();
 			exit(0);
@@ -489,6 +527,10 @@ main (int argc, char *argv[])
 	const char *prog = strrchr(argv[0], '/');
 	set_name(prog ? prog + 1 : argv[0]);
 	options_parse(&opt, argc, argv);
+
+	verbose = (opt.verbose || opt.dry_run) ? 1 : 0;
+	dry_run = (int)opt.dry_run;
+
 	xr_init();
 
 	switch (opt.a) {

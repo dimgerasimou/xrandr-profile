@@ -264,6 +264,9 @@ build_output_cache(XRRScreenResources *r, OutCache *cache, const int max)
 static void
 disable_all_crtcs(XRRScreenResources *r)
 {
+	if (dry_run)
+		return;
+
 	for (int i = 0; i < r->ncrtc; i++) {
 		XRRCrtcInfo *crtc = XRRGetCrtcInfo(dpy, r, r->crtcs[i]);
 		if (!crtc)
@@ -365,6 +368,16 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 	 * back to this output if any step above had bailed out. */
 	used[(*nused)++] = crtc;
 	cache[ci].used   = 1;
+
+	vinfo("%-10s %ux%u+%d+%d @%.2fHz rot=%u%s%s -> crtc 0x%lx",
+		     m->edid.name[0] ? m->edid.name : "(unknown)",
+		     m->w, m->h, m->x, m->y, m->rate, m->rotation,
+		     m->primary ? " primary" : "",
+		     m->has_transform ? " +transform" : "",
+		     (unsigned long)crtc);
+
+	if (dry_run)
+		return output;
 
 	XTransform xf;
 	if (m->has_transform) {
@@ -740,7 +753,9 @@ xr_apply_profile(const Profile *p)
 	if (mm_w < 1) mm_w = 1;
 	if (mm_h < 1) mm_h = 1;
 
-	XRRSetScreenSize(dpy, root, new_w, new_h, mm_w, mm_h);
+	vinfo("screen %dx%d", new_w, new_h);
+	if (!dry_run)
+		XRRSetScreenSize(dpy, root, new_w, new_h, mm_w, mm_h);
 
 	for (size_t i = 0; i < p->len; i++) {
 		const Monitor *m = &p->m[i];
@@ -753,8 +768,11 @@ xr_apply_profile(const Profile *p)
 			primary = out;
 	}
 
-	if (primary != None)
-		XRRSetOutputPrimary(dpy, root, primary);
+	if (primary != None) {
+		vinfo("primary -> 0x%lx", (unsigned long)primary);
+		if (!dry_run)
+			XRRSetOutputPrimary(dpy, root, primary);
+	}
 
 	XSync(dpy, False);
 
