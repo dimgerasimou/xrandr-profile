@@ -1,7 +1,7 @@
 # xrandr-profile
 # See LICENSE file for copyright and license details.
 
-VERSION  ?= 0.3.2
+VERSION  ?= 0.4.0
 CC       ?= cc
 
 CFLAGS ?= -Os
