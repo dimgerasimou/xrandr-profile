@@ -3,6 +3,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -578,6 +579,56 @@ profile_match(const Profile *saved, const Profile *cur)
 
 		if (!found)
 			return 0;
+	}
+
+	return 1;
+}
+
+int
+profile_layout_equal(const Profile *saved, const Profile *cur)
+{
+	uint8_t matched[64] = {0};
+
+	if (saved->len != cur->len || cur->len > sizeof(matched))
+		return 0;
+
+	for (size_t i = 0; i < saved->len; i++) {
+		const Monitor *s = &saved->m[i];
+		const Monitor *c = NULL;
+
+		for (size_t j = 0; j < cur->len; j++) {
+			if (!matched[j] && cur->m[j].edid.hash == s->edid.hash) {
+				matched[j] = 1;
+				c = &cur->m[j];
+				break;
+			}
+		}
+		if (!c)
+			return 0;
+
+		if (s->enabled != c->enabled)
+			return 0;
+		if (!s->enabled)
+			continue;   /* both disabled: geometry does not matter */
+
+		if (s->primary != c->primary
+		        || s->x != c->x || s->y != c->y
+		        || s->w != c->w || s->h != c->h
+		        || s->rotation != c->rotation
+		        || s->pan_x != c->pan_x || s->pan_y != c->pan_y
+		        || s->pan_w != c->pan_w || s->pan_h != c->pan_h)
+			return 0;
+
+		if (fabs(s->rate - c->rate) >= 0.01)
+			return 0;
+
+		if (s->has_transform != c->has_transform)
+			return 0;
+		if (s->has_transform)
+			for (int a = 0; a < 3; a++)
+				for (int b = 0; b < 3; b++)
+					if (fabs(s->transform[a][b] - c->transform[a][b]) >= 1e-6)
+						return 0;
 	}
 
 	return 1;

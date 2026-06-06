@@ -102,6 +102,48 @@ test_roundtrip(void)
 }
 
 static void
+test_layout_equal(void)
+{
+	/* Identical hash + geometry: equal. */
+	Profile *a = one_monitor_profile("a", 7);
+	Profile *b = one_monitor_profile("b", 7);
+	assert(profile_layout_equal(a, b) == 1);
+
+	b->m[0].x += 1;                       /* position differs */
+	assert(profile_layout_equal(a, b) == 0);
+	b->m[0].x -= 1;
+	assert(profile_layout_equal(a, b) == 1);
+
+	b->m[0].rate += 0.001;                /* within rate tolerance */
+	assert(profile_layout_equal(a, b) == 1);
+	b->m[0].rate += 0.05;                 /* beyond tolerance */
+	assert(profile_layout_equal(a, b) == 0);
+	b->m[0].rate = a->m[0].rate;
+
+	b->m[0].transform[0][0] += 1e-3;      /* transform differs */
+	assert(profile_layout_equal(a, b) == 0);
+	b->m[0].transform[0][0] = a->m[0].transform[0][0];
+	assert(profile_layout_equal(a, b) == 1);
+
+	/* Both disabled: geometry is ignored. */
+	a->m[0].enabled = 0;
+	b->m[0].enabled = 0;
+	b->m[0].x = 999;
+	assert(profile_layout_equal(a, b) == 1);
+	b->m[0].enabled = 1;                  /* enabled-state mismatch */
+	assert(profile_layout_equal(a, b) == 0);
+	a->m[0].enabled = 1;
+	b->m[0].x = a->m[0].x;
+	assert(profile_layout_equal(a, b) == 1);
+
+	b->m[0].edid.hash = 8;                /* different monitor set */
+	assert(profile_layout_equal(a, b) == 0);
+
+	profile_free(a);
+	profile_free(b);
+}
+
+static void
 test_match_multiplicity(void)
 {
 	/* Two panels with identical EDID hashes: matching must respect count. */
@@ -184,6 +226,7 @@ main(void)
 	}
 
 	test_roundtrip();
+	test_layout_equal();
 	test_match_multiplicity();
 	test_malformed(dir);
 

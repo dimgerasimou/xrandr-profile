@@ -18,6 +18,7 @@ _xrandr_profile()
 		'--list-current[print the current active layout]' \
 		'--watch[watch for hotplug changes and auto-apply]' \
 		'--fallback=[auto-arrange unknown monitor sets]:mode:(horizontal vertical clone off)' \
+		'--force[force apply profile]' \
 		'--names[print only the profile names]'
 
 	if [[ $state == profiles ]]; then

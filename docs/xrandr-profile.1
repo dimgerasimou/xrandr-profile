@@ -15,6 +15,7 @@ xrandr-profile \- save and restore XRandR display profiles
 .RB [ \-\-watch ]
 .RB [ \-\-fallback
 .IR mode ]
+.RB [ \-\-force ]
 .RB [ \-\-names ]
 .RB [ \-\-version ]
 .RB [ \-\-help ]
@@ -43,6 +44,13 @@ can run in the background and auto apply profiles when monitors are
 connected and disconnected.
 
 Hooks, global and per profile are implemented as well.
+
+.PP
+When the selected profile already matches the live layout exactly,
+.B xrandr-profile
+makes no changes and runs no hooks; pass
+.B \-\-force
+to re-apply regardless.
 
 .SH OPTIONS
 
@@ -87,6 +95,10 @@ is one of
 .BR vertical ","
 .BR clone " or"
 .BR off " (default)."
+
+.TP
+.B \-\-force
+Re-apply the matching profile even when the current layout already matches it.
 
 .TP
 .B \-\-names

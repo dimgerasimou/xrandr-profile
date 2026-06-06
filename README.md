@@ -35,6 +35,7 @@ xrandr-profile --delete work      # delete saved profile "work"
 xrandr-profile --watch            # daemon: auto-apply on monitor hotplug
 xrandr-profile --watch --fallback=horizontal  # daemon + auto-arrange unknown monitor sets
 xrandr-profile                    # auto-match and apply last used matching profile
+xrandr-profile --load work --force # re-apply even if "work" is already active
 
 xrandr-profile --list --names | fzf | xargs xrandr-profile --load # select with fzf profile to load
 ```
