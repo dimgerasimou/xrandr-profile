@@ -71,13 +71,13 @@ typedef struct {
 static int  hook_name_cmp(const void *a, const void *b);
 static void run_hook_dir(const char *dir, const char *profile, const char *phase);
 static void run_hooks(const char *profile, const char *phase);
-static int action_save(const Options *opt);
-static int action_apply(const char *name, XrFallback fallback, const unsigned int force);
-static int action_delete(const Options *opt);
+static int  action_save(const Options *opt);
+static int  action_apply(const char *name, XrFallback fallback, const unsigned int force);
+static int  action_delete(const Options *opt);
 static void action_list(const unsigned int names_only);
 static void action_list_all(const unsigned int names_only);
 static void action_list_current(void);
-static int action_watch(XrFallback fallback, const unsigned int force);
+static void action_watch(XrFallback fallback, const unsigned int force);
 static void usage(void);
 static int  parse_fallback(const char *s, XrFallback *out);
 static int  options_parse(Options *o, const int argc, char *argv[]);
@@ -351,20 +351,18 @@ action_list_current(void)
 	profile_free(cur);
 }
 
-static int
+static void
 action_watch(XrFallback fallback, const unsigned int force)
 {
 	enum { DEBOUNCE_MS = 300 };
 
 	xr_watch_init();
 	if (action_apply(NULL, fallback, force))
-		warn("failed to auto apply profile");
+		warn("applied profile but failed to persist order");
 
 	while (xr_wait_for_change(DEBOUNCE_MS) == XR_CHANGED)
 		if (action_apply(NULL, fallback, force))
-			warn("failed to auto apply profile");
-
-	return 0;
+			warn("applied profile but failed to persist order");
 }
 
 static void
