@@ -1,10 +1,13 @@
 # xrandr-profile
 
-A lightweight, feature rich **XRandR** profile manager. Saves and restores display configurations based on connected hardware, with automatic profile matching via EDID.
-Useful when you frequently switch between setups or power profiles, thus changing the output names and want your layout restored without heavy, complex and
-difficult to maintain `XRandR` scripts.
+A lightweight, feature-rich **XRandR** profile manager that saves and restores monitor layouts
+based on monitor identity (EDID), not only output names.
 
-**xrandr-profile** can apply the matching profile automatically when monitors are connected or disconnected. It also supports the execution of global and per profile hooks.
+Useful when output names change between docking stations, GPUs, power
+profiles, or kernel/XRandR reconfiguration.
+
+**xrandr-profile** can apply the matching profile automatically when the monitor configuration changes. It also supports global and per-profile hooks, plus fallback layouts for unknown
+monitor sets.
 
 ## Build / install
 
@@ -22,38 +25,38 @@ sudo make install
 
 ## Usage
 
-Behavior is configured via flags (see `xrandr-profile --help`).
+Behavior is configured via flags (see `xrandr-profile --help` or `man xrandr-profile`).
 
-Quick example:
+Quick examples:
 ```bash
-xrandr-profile --save work        # save current layout as "work"
-xrandr-profile --load work        # restore layout "work" if hardware matches
-xrandr-profile --list             # print saved profiles matching current hardware
-xrandr-profile --list-all         # print all saved profiles
-xrandr-profile --list-current     # print current active layout
-xrandr-profile --delete work      # delete saved profile "work"
-xrandr-profile --watch            # daemon: auto-apply on monitor hotplug
-xrandr-profile --watch --fallback=horizontal  # daemon + auto-arrange unknown monitor sets
-xrandr-profile                    # auto-match and apply last used matching profile
+xrandr-profile --save work         # save current layout as "work"
+xrandr-profile --load work         # restore layout "work" if hardware matches
 xrandr-profile --load work --force # re-apply even if "work" is already active
+xrandr-profile                     # auto-match and apply last used matching profile
+xrandr-profile --list              # print saved profiles matching current hardware
+xrandr-profile --list-all          # print all saved profiles
+xrandr-profile --list-current      # print current active layout
+xrandr-profile --delete work       # delete saved profile "work"
+xrandr-profile --watch &           # daemon: auto-apply on monitor configuration changes
+xrandr-profile --watch --fallback=horizontal &  # daemon + auto-arrange unknown monitor sets
 
-xrandr-profile --list --names | fzf | xargs xrandr-profile --load # select with fzf profile to load
+xrandr-profile --list --names | fzf | xargs -d '\n' xrandr-profile --load # load a profile selected with fzf
 ```
 
 ## Features
 
-- **EDID-based matching**: Profiles are matched by monitor identity, not output port name
-- **Full layout capture**: Saves position, resolution, refresh rate, rotation, reflection, panning, and scaling transform per monitor
-- **Automatic profile application**: Run without arguments to auto-apply the last used matching profile
-- **XDG-compliant storage**: Profiles stored at `$XDG_CONFIG_HOME/xrandr-profile/profiles` (defaults to `~/.config/xrandr-profile/profiles`)
-- **Hotplug watcher**: Applies the matching profile automatically when monitors are connected or disconnected.
-- **Fallback layouts**: With `--fallback=horizontal|vertical|clone`, unknown monitor sets are arranged automatically instead of being left untouched (`off` by default).
+- **EDID-based matching**: Profiles are matched by the physical monitor rather than just the output port name.
+- **Full layout capture**: Saves position, resolution, refresh rate, rotation, reflection, panning, and scaling transform per monitor.
+- **Automatic profile application**: Auto-apply the most recently used profile matching the currently connected monitors.
+- **XDG-compliant storage**: Profiles are stored at `$XDG_CONFIG_HOME/xrandr-profile/profiles` (defaults to `~/.config/xrandr-profile/profiles`), as a plain file.
+- **Monitor watcher**: Applies the matching profile automatically when monitors are connected or disconnected.
+- **Fallback layouts**: Unknown monitor sets can be arranged automatically instead of being left untouched.
 - **Hooks**: Supports executing global and per profile hooks.
 
 ## Running automatically
 
-`--watch` applies the current layout once on startup, then idles until a
-monitor is plugged in or removed. Start it from your session.
+`--watch` applies the current layout once on startup, then waits for monitor configuration changes.
+Start it once when your graphical session begins.
 
 Using a window manager autostart or `~/.xinitrc`:
 
@@ -61,8 +64,7 @@ Using a window manager autostart or `~/.xinitrc`:
 xrandr-profile --watch &
 ```
 
-Send `SIGHUP` (`pkill -HUP xrandr-profile`) to force an immediate re-apply —
-handy right after saving a new profile.
+Send `SIGHUP` (`pkill -HUP xrandr-profile`) to force an immediate re-apply.
 
 When you plug in a monitor combination you've never saved, `--watch` normally
 leaves the layout alone. Add `--fallback=MODE` to have it arrange the
@@ -120,10 +122,18 @@ A common use case is resetting your wallpaper after a monitor layout changes. Yo
 feh --bg-fill /path/to/my/wallpaper.jpg
 ```
 
+## Why xrandr-profile?
+
+Compared to autorandr:
+
+- Is written in C with minimal dependencies
+- Uses XRandR APIs directly
+- Includes an embedded monitor configuration watcher
+
 ## License
 
 This project is licensed under the GNU General Public License v3.
-See the LICENSE file for details.
+See the `LICENSE` file for details.
 
 © 2026 Dimitris Gerasimou
 
