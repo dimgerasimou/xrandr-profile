@@ -41,10 +41,13 @@ TARGET   := $(BINDIR)/$(BIN)
 
 TESTSDIR := $(SRCDIR)/tests
 TESTDIR  := $(BUILDDIR)/tests
-TEST     := $(TESTDIR)/test-profile
-TESTSRC  := $(TESTSDIR)/test-profile.c
 TESTSAN  := -g3 -O0 -fsanitize=address,undefined -fno-omit-frame-pointer
-TESTSRCS := $(TESTSRC) $(SRCDIR)/profile.c $(SRCDIR)/utils.c
+TESTCFLAGS := $(filter-out -Os,$(CFLAGS)) $(TESTSAN) $(DEBUG_LDFLAGS) -I$(SRCDIR)
+
+TEST_PROFILE     := $(TESTDIR)/test-profile
+TEST_PROFILE_SRC := $(TESTSDIR)/test-profile.c $(SRCDIR)/profile.c $(SRCDIR)/utils.c
+TEST_XRANDR      := $(TESTDIR)/test-xrandr
+TEST_XRANDR_SRC  := $(TESTSDIR)/test-xrandr.c $(SRCDIR)/profile.c $(SRCDIR)/utils.c
 
 COLOR  ?= 1
 PRINTF ?= printf
@@ -103,9 +106,12 @@ uninstall:
 
 test: | $(OBJDIR)
 	@mkdir -p $(TESTDIR)
-	@$(PRINTF) "$(COLOR_BLUE)Testing:$(COLOR_RESET) %s\n" "$(TEST)"
-	@$(CC) $(filter-out -Os,$(CFLAGS)) $(TESTSAN) $(DEBUG_LDFLAGS) -I$(SRCDIR) -o $(TEST) $(TESTSRCS)
-	@$(TEST)
+	@$(PRINTF) "$(COLOR_BLUE)Testing:$(COLOR_RESET) %s\n" "$(TEST_PROFILE)"
+	@$(CC) $(TESTCFLAGS) -o $(TEST_PROFILE) $(TEST_PROFILE_SRC) -lm
+	@$(TEST_PROFILE)
+	@$(PRINTF) "$(COLOR_BLUE)Testing:$(COLOR_RESET) %s\n" "$(TEST_XRANDR)"
+	@$(CC) $(TESTCFLAGS) -o $(TEST_XRANDR) $(TEST_XRANDR_SRC) $(LDLIBS)
+	@$(TEST_XRANDR)
 
 -include $(DEPS)
 
