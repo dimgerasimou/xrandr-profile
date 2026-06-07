@@ -99,15 +99,21 @@ run_hook_dir(const char *dir, const char *profile, const char *phase)
 	char  *names[MAXHOOKS];
 	size_t n = 0;
 	DIR   *d;
-	struct dirent *de;
+	const struct dirent *de;
 
 	if (!(d = opendir(dir)))
 		return;
 
-	while ((de = readdir(d)) && n < MAXHOOKS) {
+	while ((de = readdir(d))) {
 		if (de->d_name[0] == '.')
 			continue;
-		if ((names[n] = strdup(de->d_name)))
+		if (n == MAXHOOKS) {
+			warn("too many hooks in \"%s\"; ignoring the rest (max %d)", dir, MAXHOOKS);
+			break;
+		}
+		if (!(names[n] = strdup(de->d_name)))
+			warn("strdup:");
+		else
 			n++;
 	}
 	closedir(d);
