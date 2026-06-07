@@ -512,6 +512,9 @@ options_parse(Options *o, const int argc, char *argv[])
 		}
 	}
 
+	if (optind < argc)
+		argerr("unexpected argument \"%s\"", argv[optind]);
+
 	if (nactions > 1)
 		argerr("only one action may be given.");
 
