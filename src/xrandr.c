@@ -49,9 +49,10 @@ static void     get_transform(const RRCrtc crtc, Monitor *m);
 static RRMode   find_mode(const XRRScreenResources *r, const XRROutputInfo *info, const uint16_t w, const uint16_t h, const double rate);
 static RRCrtc   find_crtc(const XRROutputInfo *info, const RRCrtc *used, const int nused);
 static int      build_output_cache(XRRScreenResources *r, OutCache *cache, const int max);
+static void     bind_outputs(const Profile *p, OutCache *cache, const int ncache, int *assign);
 static void     disable_all_crtcs(XRRScreenResources *r);
 static void     compute_framebuffer(const Profile *p, int *out_w, int *out_h);
-static RROutput apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache, const int ncache, RRCrtc *used, int *nused, const int maxused);
+static RROutput apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache, const int ci, RRCrtc *used, int *nused, const int maxused);
 static void     on_signal(const int sig);
 static int      track_update(const RROutput out, const int conn);
 static void     track_init(void);
@@ -263,6 +264,46 @@ build_output_cache(XRRScreenResources *r, OutCache *cache, const int max)
 }
 
 static void
+bind_outputs(const Profile *p, OutCache *cache, const int ncache, int *assign)
+{
+	for (size_t i = 0; i < p->len; i++)
+		assign[i] = -1;
+
+	/* bind same hash and same output */
+	for (size_t i = 0; i < p->len; i++) {
+		const Monitor *m = &p->m[i];
+
+		if (!m->enabled || !m->output[0])
+			continue;
+
+		for (int j = 0; j < ncache; j++) {
+			if (!cache[j].used && cache[j].hash == m->edid.hash
+			        && !strcmp(cache[j].info->name, m->output)) {
+				assign[i]     = j;
+				cache[j].used = 1;
+				break;
+			}
+		}
+	}
+
+	/* bind the rest to same hash only */
+	for (size_t i = 0; i < p->len; i++) {
+		const Monitor *m = &p->m[i];
+
+		if (!m->enabled || assign[i] != -1 || m->edid.hash == 0)
+			continue;
+
+		for (int j = 0; j < ncache; j++) {
+			if (!cache[j].used && cache[j].hash == m->edid.hash) {
+				assign[i]     = j;
+				cache[j].used = 1;
+				break;
+			}
+		}
+	}
+}
+
+static void
 disable_all_crtcs(XRRScreenResources *r)
 {
 	if (dry_run)
@@ -324,37 +365,16 @@ compute_framebuffer(const Profile *p, int *out_w, int *out_h)
 }
 
 static RROutput
-apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
-              const int ncache, RRCrtc *used, int *nused, const int maxused)
+apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache, const int ci, RRCrtc *used, int *nused, const int maxused)
 {
-	const XRROutputInfo *info   = NULL;
-	RROutput       output = None;
-	int            ci     = -1;
-
-	for (int j = 0; j < ncache; j++) {
-		if (cache[j].used)
-			continue;
-		/* Strong identity: EDID hash. Fallback: output port name, used
-		 * only for outputs that report no EDID (hash 0). The two criteria
-		 * target disjoint cache entries (hash!=0 vs hash==0), so a name
-		 * fallback can never steal an output a hashed monitor needs. */
-		int hit = m->edid.hash
-		        ? (cache[j].hash == m->edid.hash)
-		        : (cache[j].hash == 0 && m->output[0]
-		           && !strcmp(cache[j].info->name, m->output));
-		if (hit) {
-			ci     = j;
-			output = cache[j].output;
-			info   = cache[j].info;
-			break;
-		}
-	}
-
-	if (!info) {
+	if (ci < 0) {
 		warn("No output found for monitor \"%s\" (hash=%" PRIu64 ")",
 		     m->edid.name, m->edid.hash);
 		return None;
 	}
+
+	const XRROutputInfo *info   = cache[ci].info;
+	RROutput             output = cache[ci].output;
 
 	RRMode mode_id = find_mode(r, info, m->w, m->h, m->rate);
 	if (mode_id == None) {
@@ -374,11 +394,7 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 		return None;
 	}
 
-	/* Commit: claim the CRTC and the cache entry only now that the apply
-	 * can proceed, so a monitor with a duplicate EDID hash can still fall
-	 * back to this output if any step above had bailed out. */
 	used[(*nused)++] = crtc;
-	cache[ci].used   = 1;
 
 	vinfo("%-10s %ux%u+%d+%d @%.2fHz rot=%u%s%s -> crtc 0x%lx",
 		     m->edid.name[0] ? m->edid.name : "(unknown)",
@@ -741,6 +757,7 @@ xr_apply_profile(const Profile *p)
 	OutCache            cache[MAXOUT];
 	int                 ncache;
 	int                 new_w, new_h;
+	int                *assign;
 
 	root = DefaultRootWindow(dpy);
 
@@ -749,6 +766,10 @@ xr_apply_profile(const Profile *p)
 		die("Can't get screen resources");
 
 	ncache = build_output_cache(r, cache, MAXOUT);
+
+	assign = emalloc((p->len ? p->len : 1) * sizeof(*assign));
+	bind_outputs(p, cache, ncache, assign);
+
 	disable_all_crtcs(r);
 	compute_framebuffer(p, &new_w, &new_h);
 
@@ -774,10 +795,12 @@ xr_apply_profile(const Profile *p)
 		if (!m->enabled)
 			continue;
 
-		RROutput out = apply_monitor(r, m, cache, ncache, used_crtcs, &nused, MAXCRTC);
+		RROutput out = apply_monitor(r, m, cache, assign[i], used_crtcs, &nused, MAXCRTC);
 		if (out != None && m->primary)
 			primary = out;
 	}
+
+	free(assign);
 
 	if (primary != None) {
 		vinfo("primary -> 0x%lx", (unsigned long)primary);
