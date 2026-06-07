@@ -525,7 +525,7 @@ profile_list_write(const ProfileList *pl)
 		fprintf(fp, "[Profile \"%s\"]\n", p->name);
 
 		for (size_t j = 0; j < p->len; j++) {
-			Monitor *m = &p->m[j];
+			const Monitor *m = &p->m[j];
 
 			fprintf(fp, "monitor hash=%" PRIu64 " name=\"%s\" serial=\"%s\" enabled=%u", m->edid.hash,  m->edid.name,  m->edid.serial, m->enabled);
 			if (m->enabled) {
