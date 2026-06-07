@@ -144,7 +144,7 @@ get_edid(const RROutput output, Monitor *m)
 			continue;
 
 		snprintf(dst, 14, "%.13s", (const char *)(d + 5));
-		for (int j = (int)strlen(dst) - 1; j >= 0 && dst[j] <= ' '; j--)
+		for (int j = (int)strlen(dst) - 1; j >= 0 && (unsigned char)dst[j] <= ' '; j--)
 			dst[j] = '\0';
 	}
 
@@ -326,7 +326,7 @@ static RROutput
 apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
               const int ncache, RRCrtc *used, int *nused, const int maxused)
 {
-	XRROutputInfo *info   = NULL;
+	const XRROutputInfo *info   = NULL;
 	RROutput       output = None;
 	int            ci     = -1;
 
@@ -843,7 +843,7 @@ xr_wait_for_change(const int debounce_ms)
 		/* Drain X events; flip dirty only on real connection changes. */
 		while (XPending(dpy)) {
 			XEvent ev;
-			XRRNotifyEvent *ne;
+			const XRRNotifyEvent *ne;
 			XRROutputChangeNotifyEvent *oce;
 
 			XNextEvent(dpy, &ev);
