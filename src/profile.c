@@ -243,6 +243,9 @@ parse_monitor_line(const char *line, Monitor *m)
 		if (!strcmp(key, "hash")) {
 			if (parse_u64(val, &m->edid.hash) < 0)
 				return report_malformed_line(key, val);
+		} else if (!strcmp(key, "output")) {
+			snprintf(m->output, sizeof(m->output), "%.*s",
+			         (int)sizeof(m->output) - 1, val);
 		} else if (!strcmp(key, "name")) {
 			snprintf(m->edid.name, sizeof(m->edid.name), "%.*s",
 			         (int)sizeof(m->edid.name) - 1, val);
@@ -527,7 +530,7 @@ profile_list_write(const ProfileList *pl)
 		for (size_t j = 0; j < p->len; j++) {
 			const Monitor *m = &p->m[j];
 
-			fprintf(fp, "monitor hash=%" PRIu64 " name=\"%s\" serial=\"%s\" enabled=%u", m->edid.hash,  m->edid.name,  m->edid.serial, m->enabled);
+			fprintf(fp, "monitor hash=%" PRIu64 " output=\"%s\" name=\"%s\" serial=\"%s\" enabled=%u", m->edid.hash,  m->output,  m->edid.name,  m->edid.serial, m->enabled);
 			if (m->enabled) {
 				fprintf(fp, " primary=%u w=%u h=%u rate=%.2f x=%d y=%d pan_x=%d pan_y=%d pan_w=%u pan_h=%u rotation=%u",
 				        m->primary, m->w, m->h, m->rate, m->x, m->y, m->pan_x, m->pan_y, m->pan_w, m->pan_h, m->rotation);

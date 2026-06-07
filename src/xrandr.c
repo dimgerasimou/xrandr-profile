@@ -246,10 +246,11 @@ build_output_cache(XRRScreenResources *r, OutCache *cache, const int max)
 		}
 
 		Monitor tmp = {0};
-		if (get_edid(r->outputs[j], &tmp) < 0) {
-			XRRFreeOutputInfo(oi);
-			continue; /* EDID not ready yet; a follow-up event will retry */
-		}
+		/* EDID may be absent (some KVMs, virtual/adapter outputs) or not
+		 * ready yet right after a hotplug. Either way keep the output: a
+		 * zero hash falls back to port-name matching in apply_monitor, and
+		 * a not-yet-matching set is gated out by profile_match upstream. */
+		get_edid(r->outputs[j], &tmp);
 
 		cache[n].output = r->outputs[j];
 		cache[n].info   = oi;
@@ -331,7 +332,17 @@ apply_monitor(XRRScreenResources *r, const Monitor *m, OutCache *cache,
 	int            ci     = -1;
 
 	for (int j = 0; j < ncache; j++) {
-		if (!cache[j].used && cache[j].hash == m->edid.hash) {
+		if (cache[j].used)
+			continue;
+		/* Strong identity: EDID hash. Fallback: output port name, used
+		 * only for outputs that report no EDID (hash 0). The two criteria
+		 * target disjoint cache entries (hash!=0 vs hash==0), so a name
+		 * fallback can never steal an output a hashed monitor needs. */
+		int hit = m->edid.hash
+		        ? (cache[j].hash == m->edid.hash)
+		        : (cache[j].hash == 0 && m->output[0]
+		           && !strcmp(cache[j].info->name, m->output));
+		if (hit) {
 			ci     = j;
 			output = cache[j].output;
 			info   = cache[j].info;
