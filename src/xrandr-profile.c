@@ -357,10 +357,12 @@ action_watch(XrFallback fallback, const unsigned int force)
 	enum { DEBOUNCE_MS = 300 };
 
 	xr_watch_init();
-	action_apply(NULL, fallback, force);
+	if (action_apply(NULL, fallback, force))
+		warn("failed to auto apply profile");
 
 	while (xr_wait_for_change(DEBOUNCE_MS) == XR_CHANGED)
-		action_apply(NULL, fallback, force);
+		if (action_apply(NULL, fallback, force))
+			warn("failed to auto apply profile");
 
 	return 0;
 }
@@ -576,8 +578,7 @@ main (int argc, char *argv[])
 		break;
 
 	case WATCH:
-		if (action_watch(opt.fallback, opt.force))
-			ret = 1;
+		action_watch(opt.fallback, opt.force);
 		break;
 	}
 
